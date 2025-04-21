@@ -1,4 +1,5 @@
-def call(String dockerImage, String k8sTargetVersion, String kubeconfigPath) {
+def call(String dockerImage, String k8sTargetVersion, String kubeconfigPath, String slackChannel) {
+    // Run kubent command to check for deprecated APIs
     def output = sh(
         script: """
             /usr/local/bin/docker run -i --rm \
@@ -11,17 +12,28 @@ def call(String dockerImage, String k8sTargetVersion, String kubeconfigPath) {
         returnStdout: true
     ).trim()
 
+    // If there are deprecated APIs found
     if (output) {
         def jsonOutput = readJSON text: output
         if (jsonOutput) {
-            echo "❌ Deprecated APIs found:"
+            def slackMessage = "❌ *Deprecated APIs found:*"
+
+            // Construct Slack message for each deprecated API
             jsonOutput.each { item ->
-                echo "- ${item.kind} (${item.apiversion}) in namespace ${item.namespace}, replace with: ${item.replacement}"
+                slackMessage += "\n- *${item.Kind}* in namespace *${item.Namespace}* (API version: ${item.ApiVersion})"
+                slackMessage += "\n  - Rule: ${item.RuleSet}"
+                slackMessage += "\n  - Replace with: ${item.ReplaceWith}"
+                slackMessage += "\n  - Since: ${item.Since}"
+                slackMessage += "\n"
             }
+
+            // Send Slack message
+            slackSend(channel: slackChannel, message: slackMessage)
             error("Deprecated APIs detected.")
         }
+    } else {
+        def slackMessage = "✅ No deprecated APIs detected."
+        slackSend(channel: slackChannel, message: slackMessage)
     }
-
-    echo "✅ No deprecated APIs detected."
 }
 
