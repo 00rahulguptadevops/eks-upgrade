@@ -21,8 +21,11 @@ def call(Map params) {
         if (jsonOutput && jsonOutput.size() > 0) {
             echo "❌ Deprecated APIs found."
 
+            // Convert the JSON output to a pretty string representation
+            def jsonPretty = groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(jsonOutput))
+
             def slackText = "*❌ Deprecated APIs Detected:*\n" +
-                            "```\n${output}\n```\n" +
+                            "```\n${jsonPretty}\n```\n" +
                             "🔗 *Job Link:* <${env.BUILD_URL}|View Failed Stage>"
 
             def slackPayload = groovy.json.JsonOutput.toJson([text: slackText])
