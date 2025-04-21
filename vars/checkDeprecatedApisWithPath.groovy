@@ -21,11 +21,11 @@ def call(Map params) {
         if (jsonOutput && jsonOutput.size() > 0) {
             echo "❌ Deprecated APIs found."
 
-            // Format Slack message with JSON block
+            // Slack-friendly formatting without escaped characters
             def slackText = """*❌ Deprecated APIs Detected*
 
 \`\`\`
-${output.replace("```", "'''")}
+${output}
 \`\`\`
 
 🔗 *Job Link:* <${env.BUILD_URL}|View Failed Stage>
@@ -42,7 +42,7 @@ ${output.replace("```", "'''")}
                 )
             }
 
-            error("Deprecated APIs found. Slack notification sent.")
+            error("Deprecated APIs found. Slack message sent.")
         }
     }
 
