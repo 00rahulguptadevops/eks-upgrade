@@ -1,5 +1,9 @@
 package org.foo
 
 class Human {
-    string name
+    String name
+
+    void sayName(){
+        sh 'echo ${name}'
+    }
 }
