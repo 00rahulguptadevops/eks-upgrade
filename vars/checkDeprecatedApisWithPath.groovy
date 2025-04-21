@@ -20,17 +20,16 @@ def call(Map params) {
         def jsonOutput = readJSON text: output
         if (jsonOutput && jsonOutput.size() > 0) {
             echo "❌ Deprecated APIs found."
-            jsonOutput.each { item ->
-                echo "- ${item.Kind} (${item.ApiVersion}) in namespace ${item.Namespace}, replace with: ${item.ReplaceWith}"
-            }
 
-            // Escape JSON output inside Slack message (no raw backslashes!)
+            // Format Slack message with JSON block
             def slackText = """*❌ Deprecated APIs Detected*
+
 \`\`\`
-${output}
+${output.replace("```", "'''")}
 \`\`\`
 
-🔗 *Job Link:* ${env.BUILD_URL}"""
+🔗 *Job Link:* <${env.BUILD_URL}|View Failed Stage>
+"""
 
             def slackPayload = groovy.json.JsonOutput.toJson([text: slackText])
 
