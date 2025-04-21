@@ -11,7 +11,12 @@ def call(String dockerImage, String k8sTargetVersion, String kubeconfigPath, Str
         """,
         returnStdout: true,
         returnStatus: true // Get exit status of the command
-    ).trim()
+    )
+
+    // Check if output is a string before calling trim
+    if (output instanceof String) {
+        output = output.trim()  // Only call trim on string type
+    }
 
     // Debug output to console
     echo "Kubent output: ${output}"
