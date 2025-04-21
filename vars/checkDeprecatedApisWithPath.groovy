@@ -24,18 +24,27 @@ def call(Map params) {
             // Convert the JSON output to a pretty string representation
             def jsonPretty = groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(jsonOutput))
 
-            def slackText = "*❌ Deprecated APIs Detected:*\n" +
-                            "```\n${jsonPretty}\n```\n" +
-                            "🔗 *Job Link:* <${env.BUILD_URL}|View Failed Stage>"
-
-            def slackPayload = groovy.json.JsonOutput.toJson([text: slackText])
+            def slackPayload = groovy.json.JsonOutput.toJson([text: "*❌ Deprecated APIs Detected:*\n" + "```json\n${jsonPretty}\n```"])
 
             withCredentials([string(credentialsId: slackWebhookCredId, variable: 'SLACK_WEBHOOK')]) {
+                // Send the JSON data to Slack directly as part of the message
                 httpRequest(
                     httpMode: 'POST',
                     url: SLACK_WEBHOOK,
                     contentType: 'APPLICATION_JSON',
                     requestBody: slackPayload
+                )
+            }
+
+            // Save the JSON output to a file, if required
+            writeFile file: 'deprecated_apis_output.json', text: groovy.json.JsonOutput.toJson(jsonOutput)
+
+            // Optionally upload the JSON file to Slack
+            withCredentials([string(credentialsId: slackWebhookCredId, variable: 'SLACK_WEBHOOK')]) {
+                slackUploadFile(
+                    filePath: 'deprecated_apis_output.json',
+                    channel: '#your-channel',
+                    message: "Here is the JSON file with the deprecated APIs."
                 )
             }
 
