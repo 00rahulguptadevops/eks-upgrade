@@ -2,9 +2,8 @@ def call(Map params) {
     String dockerImage = params.dockerImage
     String k8sTargetVersion = params.k8sTargetVersion
     String kubeconfigPath = params.kubeconfigPath
-    String slackChannel = params.slackChannel ?: '#general'  // fallback to default
+    String slackWebhookCredId = params.slackWebhookCredId
 
-    // Temp output file
     String outputFile = 'deprecated-apis-output.json'
 
     def output = sh(
@@ -19,36 +18,33 @@ def call(Map params) {
         returnStdout: true
     ).trim()
 
-    // Save the output to a file
     writeFile file: outputFile, text: output
 
     if (output) {
         def jsonOutput = readJSON text: output
         if (jsonOutput && jsonOutput.size() > 0) {
-            def slackMessage = "*❌ Deprecated APIs detected in cluster:*\n"
+            echo "❌ Deprecated APIs found."
             jsonOutput.each { item ->
-                slackMessage += "*Name:* ${item.Name}\n"
-                slackMessage += "*Namespace:* ${item.Namespace}\n"
-                slackMessage += "*Kind:* ${item.Kind}\n"
-                slackMessage += "*API Version:* ${item.ApiVersion}\n"
-                slackMessage += "*Rule:* ${item.RuleSet}\n"
-                slackMessage += "*Replace With:* ${item.ReplaceWith}\n"
-                slackMessage += "*Since:* ${item.Since}\n"
-                slackMessage += "-----------------------------\n"
+                echo "- ${item.Kind} (${item.ApiVersion}) in namespace ${item.Namespace}, replace with: ${item.ReplaceWith}"
             }
 
-            // Send Slack message with file content
-            slackSend(channel: slackChannel, message: slackMessage)
+            // Send JSON as a Slack code block
+            def slackMessage = """*❌ Deprecated APIs Detected*\n\`\`\`${output}\`\`\`"""
 
-            // Optionally, archive file in Jenkins
+            withCredentials([string(credentialsId: slackWebhookCredId, variable: 'SLACK_WEBHOOK')]) {
+                httpRequest httpMode: 'POST',
+                    url: "${SLACK_WEBHOOK}",
+                    contentType: 'APPLICATION_JSON',
+                    requestBody: """{
+                        "text": "${slackMessage.replace('"', '\\"').replace('\n', '\\n')}"
+                    }"""
+            }
+
             archiveArtifacts artifacts: outputFile
-
-            // Fail pipeline
-            error("Deprecated APIs found. See Slack message and archived output.")
+            error("Deprecated APIs found. See Slack message and artifact.")
         }
     }
 
-    slackSend(channel: slackChannel, message: "✅ No deprecated APIs detected.")
     echo "✅ No deprecated APIs detected."
 }
 
