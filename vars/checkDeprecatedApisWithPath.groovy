@@ -28,16 +28,17 @@ def call(Map params) {
                 echo "- ${item.Kind} (${item.ApiVersion}) in namespace ${item.Namespace}, replace with: ${item.ReplaceWith}"
             }
 
-            // Send JSON as a Slack code block
-            def slackMessage = """*❌ Deprecated APIs Detected*\n\`\`\`${output}\`\`\`"""
+            // Prepare Slack JSON payload with safe escaping
+            def slackText = "*❌ Deprecated APIs Detected*\n```" + output + "```"
+            def slackPayload = groovy.json.JsonOutput.toJson([text: slackText])
 
             withCredentials([string(credentialsId: slackWebhookCredId, variable: 'SLACK_WEBHOOK')]) {
-                httpRequest httpMode: 'POST',
-                    url: "${SLACK_WEBHOOK}",
+                httpRequest(
+                    httpMode: 'POST',
+                    url: SLACK_WEBHOOK,
                     contentType: 'APPLICATION_JSON',
-                    requestBody: """{
-                        "text": "${slackMessage.replace('"', '\\"').replace('\n', '\\n')}"
-                    }"""
+                    requestBody: slackPayload
+                )
             }
 
             archiveArtifacts artifacts: outputFile
