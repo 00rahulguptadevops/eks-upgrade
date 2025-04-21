@@ -2,7 +2,10 @@ def call(Map params) {
     String dockerImage = params.dockerImage
     String k8sTargetVersion = params.k8sTargetVersion
     String kubeconfigPath = params.kubeconfigPath
-    String slackChannel = params.slackChannel
+    String slackChannel = params.slackChannel ?: '#general'  // fallback to default
+
+    // Temp output file
+    String outputFile = 'deprecated-apis-output.json'
 
     def output = sh(
         script: """
@@ -16,18 +19,32 @@ def call(Map params) {
         returnStdout: true
     ).trim()
 
+    // Save the output to a file
+    writeFile file: outputFile, text: output
+
     if (output) {
         def jsonOutput = readJSON text: output
-        if (jsonOutput) {
-            def slackMessage = "❌ *Deprecated APIs found:*"
+        if (jsonOutput && jsonOutput.size() > 0) {
+            def slackMessage = "*❌ Deprecated APIs detected in cluster:*\n"
             jsonOutput.each { item ->
-                slackMessage += "\n- *${item.Kind}* in namespace *${item.Namespace}* (API version: ${item.ApiVersion})"
-                slackMessage += "\n  - Rule: ${item.RuleSet}"
-                slackMessage += "\n  - Replace with: ${item.ReplaceWith}"
-                slackMessage += "\n  - Since: ${item.Since}\n"
+                slackMessage += "*Name:* ${item.Name}\n"
+                slackMessage += "*Namespace:* ${item.Namespace}\n"
+                slackMessage += "*Kind:* ${item.Kind}\n"
+                slackMessage += "*API Version:* ${item.ApiVersion}\n"
+                slackMessage += "*Rule:* ${item.RuleSet}\n"
+                slackMessage += "*Replace With:* ${item.ReplaceWith}\n"
+                slackMessage += "*Since:* ${item.Since}\n"
+                slackMessage += "-----------------------------\n"
             }
+
+            // Send Slack message with file content
             slackSend(channel: slackChannel, message: slackMessage)
-            error("Deprecated APIs detected.")
+
+            // Optionally, archive file in Jenkins
+            archiveArtifacts artifacts: outputFile
+
+            // Fail pipeline
+            error("Deprecated APIs found. See Slack message and archived output.")
         }
     }
 
