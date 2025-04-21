@@ -1,0 +1,17 @@
+apiVersion: networking.k8s.io/v1beta1  # Deprecated API version for Ingress
+kind: Ingress
+metadata:
+  name: old-api-ingress
+spec:
+  rules:
+  - host: old-api.local
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: old-api-service
+            port:
+              number: 80
+
