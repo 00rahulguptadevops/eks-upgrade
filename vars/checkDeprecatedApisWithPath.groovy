@@ -2,6 +2,7 @@ def call(String dockerImage, String k8sTargetVersion, String kubeconfigPath) {
     def output = sh(
         script: """
             /usr/local/bin/docker run -i --rm \
+            --network host \
             -v "${kubeconfigPath}:/root/.kube/config" \
             -v ~/.aws:/root/.aws \
             ${dockerImage} \
