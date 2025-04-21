@@ -16,7 +16,7 @@ def call(Map params) {
         returnStdout: true
     ).trim()
 
-    echo "Output from Kubernetes API check:\n${output}" // Log the output in Jenkins job
+    echo "Output from Kubernetes API check:\n${output}"
 
     if (output) {
         def jsonOutput = readJSON text: output
@@ -35,7 +35,7 @@ def call(Map params) {
             def slackPayload = groovy.json.JsonOutput.toJson([text: slackText])
 
             withCredentials([string(credentialsId: slackWebhookCredId, variable: 'SLACK_WEBHOOK')]) {
-                // Send the Slack message
+                // Send the Slack message using the webhook
                 httpRequest(
                     httpMode: 'POST',
                     url: SLACK_WEBHOOK,
@@ -43,16 +43,16 @@ def call(Map params) {
                     requestBody: slackPayload
                 )
 
-                // Upload JSON file to Slack as an attachment
+                // Upload JSON file to Slack as an attachment using the same webhook
                 def fileUploadPayload = [
                     file: new File(jsonFile).bytes,
                     filetype: 'json',
                     filename: 'deprecated_apis.json',
-                    channels: slackWebhookCredId // Send to appropriate Slack channel
+                    channels: 'your-channel-id-or-name'  // Specify the channel or use webhook for direct message
                 ]
-                
-                // Upload file to Slack
-                slackUploadFile(fileUploadPayload)
+
+                // Upload the file to Slack using the webhook (via Slack API)
+                slackUploadFile(fileUploadPayload, slackWebhookCredId)
             }
 
             error("Deprecated APIs found. Slack message and file sent.")
@@ -62,20 +62,22 @@ def call(Map params) {
     echo "✅ No deprecated APIs detected."
 }
 
-def slackUploadFile(Map payload) {
-    // Function to upload a file to Slack
-    httpRequest(
-        httpMode: 'POST',
-        url: 'https://slack.com/api/files.upload',
-        headers: [
-            'Authorization': "Bearer ${SLACK_TOKEN}"
-        ],
-        body: [
-            file: payload.file,
-            filetype: payload.filetype,
-            filename: payload.filename,
-            channels: payload.channels
-        ]
-    )
+def slackUploadFile(Map payload, String slackWebhookCredId) {
+    withCredentials([string(credentialsId: slackWebhookCredId, variable: 'SLACK_WEBHOOK')]) {
+        // Use Slack API endpoint to upload the file
+        httpRequest(
+            httpMode: 'POST',
+            url: 'https://slack.com/api/files.upload',
+            headers: [
+                'Authorization': "Bearer ${SLACK_WEBHOOK}" // Using webhook for authentication
+            ],
+            body: [
+                file: payload.file,
+                filetype: payload.filetype,
+                filename: payload.filename,
+                channels: payload.channels
+            ]
+        )
+    }
 }
 
