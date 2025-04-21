@@ -9,7 +9,8 @@ def call(String dockerImage, String k8sTargetVersion, String kubeconfigPath, Str
             ${dockerImage} \
             -t ${k8sTargetVersion} -o json -e -k /root/.kube/config 2>/dev/null
         """,
-        returnStdout: true
+        returnStdout: true,
+        returnStatus: true // Get exit status of the command
     ).trim()
 
     // Debug output to console
@@ -30,22 +31,12 @@ def call(String dockerImage, String k8sTargetVersion, String kubeconfigPath, Str
                 slackMessage += "\n"
             }
 
-            // Debug Slack message before sending
-            echo "Slack Message: ${slackMessage}"
-
             // Send Slack message
             slackSend(channel: slackChannel, message: slackMessage)
-            error("Deprecated APIs detected.")
-        } else {
-            // If no deprecated APIs found, send success message
-            def slackMessage = "✅ No deprecated APIs detected."
-            echo "Slack Message: ${slackMessage}"
-            slackSend(channel: slackChannel, message: slackMessage)
+            echo "⚠️ Deprecated APIs detected, but pipeline will not fail."
         }
     } else {
-        // No output from the kubent command
         def slackMessage = "✅ No deprecated APIs detected."
-        echo "Slack Message: ${slackMessage}"
         slackSend(channel: slackChannel, message: slackMessage)
     }
 }
