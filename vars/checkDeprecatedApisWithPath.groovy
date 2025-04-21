@@ -21,15 +21,9 @@ def call(Map params) {
         if (jsonOutput && jsonOutput.size() > 0) {
             echo "❌ Deprecated APIs found."
 
-            // Slack-friendly formatting without escaped characters
-            def slackText = """*❌ Deprecated APIs Detected*
-
-\`\`\`
-${output}
-\`\`\`
-
-🔗 *Job Link:* <${env.BUILD_URL}|View Failed Stage>
-"""
+            def slackText = "*❌ Deprecated APIs Detected:*\n" +
+                            "```\n${output}\n```\n" +
+                            "🔗 *Job Link:* <${env.BUILD_URL}|View Failed Stage>"
 
             def slackPayload = groovy.json.JsonOutput.toJson([text: slackText])
 
