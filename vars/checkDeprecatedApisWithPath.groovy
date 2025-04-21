@@ -16,42 +16,66 @@ def call(Map params) {
         returnStdout: true
     ).trim()
 
+    echo "Output from Kubernetes API check:\n${output}" // Log the output in Jenkins job
+
     if (output) {
         def jsonOutput = readJSON text: output
         if (jsonOutput && jsonOutput.size() > 0) {
             echo "❌ Deprecated APIs found."
 
-            // Convert the JSON output to a pretty string representation
-            def jsonPretty = groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(jsonOutput))
+            // Save the JSON output to a file
+            def jsonFile = "/tmp/deprecated_apis.json"
+            writeFile file: jsonFile, text: output
 
-            def slackPayload = groovy.json.JsonOutput.toJson([text: "*❌ Deprecated APIs Detected:*\n" + "```json\n${jsonPretty}\n```"])
+            // Slack message
+            def slackText = "*❌ Deprecated APIs Detected:*\n" +
+                            "```\n${output}\n```\n" +
+                            "🔗 *Job Link:* <${env.BUILD_URL}|View Failed Stage>"
+
+            def slackPayload = groovy.json.JsonOutput.toJson([text: slackText])
 
             withCredentials([string(credentialsId: slackWebhookCredId, variable: 'SLACK_WEBHOOK')]) {
-                // Send the JSON data to Slack directly as part of the message
+                // Send the Slack message
                 httpRequest(
                     httpMode: 'POST',
                     url: SLACK_WEBHOOK,
                     contentType: 'APPLICATION_JSON',
                     requestBody: slackPayload
                 )
+
+                // Upload JSON file to Slack as an attachment
+                def fileUploadPayload = [
+                    file: new File(jsonFile).bytes,
+                    filetype: 'json',
+                    filename: 'deprecated_apis.json',
+                    channels: slackWebhookCredId // Send to appropriate Slack channel
+                ]
+                
+                // Upload file to Slack
+                slackUploadFile(fileUploadPayload)
             }
 
-            // Save the JSON output to a file, if required
-            writeFile file: 'deprecated_apis_output.json', text: groovy.json.JsonOutput.toJson(jsonOutput)
-
-            // Optionally upload the JSON file to Slack
-            withCredentials([string(credentialsId: slackWebhookCredId, variable: 'SLACK_WEBHOOK')]) {
-                slackUploadFile(
-                    filePath: 'deprecated_apis_output.json',
-                    channel: '#your-channel',
-                    message: "Here is the JSON file with the deprecated APIs."
-                )
-            }
-
-            error("Deprecated APIs found. Slack message sent.")
+            error("Deprecated APIs found. Slack message and file sent.")
         }
     }
 
     echo "✅ No deprecated APIs detected."
+}
+
+def slackUploadFile(Map payload) {
+    // Function to upload a file to Slack
+    httpRequest(
+        httpMode: 'POST',
+        url: 'https://slack.com/api/files.upload',
+        headers: [
+            'Authorization': "Bearer ${SLACK_TOKEN}"
+        ],
+        body: [
+            file: payload.file,
+            filetype: payload.filetype,
+            filename: payload.filename,
+            channels: payload.channels
+        ]
+    )
 }
 
