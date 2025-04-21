@@ -4,8 +4,6 @@ def call(Map params) {
     String kubeconfigPath = params.kubeconfigPath
     String slackWebhookCredId = params.slackWebhookCredId
 
-    String outputFile = 'deprecated-apis-output.json'
-
     def output = sh(
         script: """
             /usr/local/bin/docker run -i --rm \
@@ -18,8 +16,6 @@ def call(Map params) {
         returnStdout: true
     ).trim()
 
-    writeFile file: outputFile, text: output
-
     if (output) {
         def jsonOutput = readJSON text: output
         if (jsonOutput && jsonOutput.size() > 0) {
@@ -28,8 +24,14 @@ def call(Map params) {
                 echo "- ${item.Kind} (${item.ApiVersion}) in namespace ${item.Namespace}, replace with: ${item.ReplaceWith}"
             }
 
-            // Prepare Slack JSON payload with safe escaping
-            def slackText = "*❌ Deprecated APIs Detected*\n```" + output + "```"
+            // Format message for Slack with Jenkins link
+            def slackText = """
+*❌ Deprecated APIs Detected*
+\`\`\`
+${output}
+\`\`\`
+🔗 *Job Link:* ${env.BUILD_URL}
+"""
             def slackPayload = groovy.json.JsonOutput.toJson([text: slackText])
 
             withCredentials([string(credentialsId: slackWebhookCredId, variable: 'SLACK_WEBHOOK')]) {
@@ -41,8 +43,7 @@ def call(Map params) {
                 )
             }
 
-            archiveArtifacts artifacts: outputFile
-            error("Deprecated APIs found. See Slack message and artifact.")
+            error("Deprecated APIs found. Slack notification sent.")
         }
     }
 
