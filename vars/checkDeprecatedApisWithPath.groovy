@@ -11,7 +11,7 @@ def call(Map params) {
             -v "${kubeconfigPath}:/root/.kube/config" \
             -v ~/.aws:/root/.aws \
             ${dockerImage} \
-            -t ${k8sTargetVersion} -o json -e -k /root/.kube/config 2>/dev/null
+            -t ${k8sTargetVersion} -o json  -k /root/.kube/config 2>/dev/null
         """,
         returnStdout: true
     ).trim()
