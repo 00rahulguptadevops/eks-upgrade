@@ -4,6 +4,6 @@ class Human {
     String name
 
     void sayName() {
-        sh "echo ${name}"
+        steps.sh "echo Hello, my name is ${name}"
     }
 }
