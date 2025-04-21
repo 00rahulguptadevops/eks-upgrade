@@ -24,14 +24,14 @@ def call(Map params) {
                 echo "- ${item.Kind} (${item.ApiVersion}) in namespace ${item.Namespace}, replace with: ${item.ReplaceWith}"
             }
 
-            // Format message for Slack with Jenkins link
-            def slackText = """
-*❌ Deprecated APIs Detected*
+            // Escape JSON output inside Slack message (no raw backslashes!)
+            def slackText = """*❌ Deprecated APIs Detected*
 \`\`\`
 ${output}
 \`\`\`
-🔗 *Job Link:* ${env.BUILD_URL}
-"""
+
+🔗 *Job Link:* ${env.BUILD_URL}"""
+
             def slackPayload = groovy.json.JsonOutput.toJson([text: slackText])
 
             withCredentials([string(credentialsId: slackWebhookCredId, variable: 'SLACK_WEBHOOK')]) {
