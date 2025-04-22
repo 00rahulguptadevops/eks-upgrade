@@ -13,7 +13,7 @@ def call(String fileName) {
     }
 
     if (!(yamlContent instanceof List) || yamlContent.isEmpty()) {
-        error "❌ Invalid or empty YAML."
+        error "❌ Please upload YAML File."
     }
 
     return yamlContent[0]  // Return the first cluster object from the YAML
