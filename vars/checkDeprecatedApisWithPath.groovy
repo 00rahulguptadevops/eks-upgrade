@@ -6,6 +6,7 @@ def call(Map args) {
     try {
         echo "🔍 Running deprecated API check for cluster: ${clusterInfo}"
 
+        // Run the Kubent check to get the deprecated API results in JSON format
         def result = sh(script: """
             /usr/local/bin/docker run --rm --network host \\
               -v ${kubePath}:/root/.kube/config \\
@@ -13,77 +14,43 @@ def call(Map args) {
               kubent:aws01 -t ${targetVersion} -o json -e -k /root/.kube/config
         """, returnStdout: true).trim()
 
+        // Parse the JSON result
         def jsonResult = readJSON(text: result)
 
-        // Convert JSON to HTML
-        def htmlReport = convertJsonToHtml(jsonResult, clusterInfo)
+        // Check if deprecated APIs were found
+        if (jsonResult.size() > 0) {
+            def reportFileJson = "deprecated_apis_report_${clusterInfo}.json"
+            writeFile(file: reportFileJson, text: result)
 
-        // Write the HTML report to a file
-        def htmlReportFile = "deprecated_apis_report_${clusterInfo}.html"
-        writeFile(file: htmlReportFile, text: htmlReport)
+            // Convert JSON to HTML format
+            def reportFileHtml = "deprecated_apis_report_${clusterInfo}.html"
+            def htmlContent = "<html><body><h1>Deprecated APIs Report for ${clusterInfo}</h1><table border='1'>"
+            htmlContent += "<tr><th>Resource</th><th>API</th><th>Version</th><th>Deprecated</th></tr>"
 
-        // Archive the HTML report as an artifact
-        archiveArtifacts artifacts: htmlReportFile, allowEmptyArchive: true
+            // Loop through the JSON result and generate HTML table rows
+            jsonResult.each { api ->
+                api.resources.each { resource ->
+                    htmlContent += "<tr><td>${resource.name}</td><td>${api.name}</td><td>${api.version}</td><td>${api.deprecated}</td></tr>"
+                }
+            }
+            htmlContent += "</table></body></html>"
 
-        // Publish the HTML report using the HTML Publisher plugin
-        publishHTML(target: [
-            reportName: "Deprecated APIs Report",
-            reportDir: ".",
-            reportFiles: htmlReportFile,
-            keepAll: true
-        ])
+            // Write the HTML content to a file
+            writeFile(file: reportFileHtml, text: htmlContent)
 
-        echo "❌ Deprecated APIs found in cluster '${clusterInfo}'. HTML report published."
+            // Publish the HTML report to Jenkins
+            publishHTML([reportName: "Deprecated APIs Report", reportDir: ".", reportFiles: reportFileHtml])
+
+            echo "❌ Deprecated APIs found in cluster '${clusterInfo}'. HTML report published."
+        } else {
+            echo "✅ No deprecated APIs found for cluster '${clusterInfo}'."
+        }
     } catch (Exception e) {
-        def failedFile = "kubent_check_failed_${clusterInfo}.html"
-        writeFile(file: failedFile, text: "<html><body><h1>Kubent check failed for cluster '${clusterInfo}'.</h1></body></html>")
+        def failedFile = "kubent_check_failed_${clusterInfo}.json"
+        writeFile(file: failedFile, text: '{"status": "failure", "message": "Kubent check failed"}')
+        publishJSONReports(reports: failedFile)
 
-        // Archive the failure HTML report
-        archiveArtifacts artifacts: failedFile, allowEmptyArchive: true
-
-        // Publish failure HTML report
-        publishHTML(target: [
-            reportName: "Kubent Check Failed",
-            reportDir: ".",
-            reportFiles: failedFile,
-            keepAll: true
-        ])
-
-        echo "❗ Kubent check failed for cluster '${clusterInfo}'. HTML report published."
+        echo "❗ Kubent check failed for cluster '${clusterInfo}'. JSON report published."
     }
-}
-
-// Convert JSON to HTML table
-def convertJsonToHtml(def jsonResult, String clusterInfo) {
-    def html = """
-    <html>
-        <head><title>Deprecated APIs Report for ${clusterInfo}</title></head>
-        <body>
-            <h1>Deprecated APIs Report for ${clusterInfo}</h1>
-            <table border="1">
-                <tr>
-                    <th>API Version</th>
-                    <th>Kind</th>
-                    <th>Deprecated Version</th>
-                </tr>
-    """
-    
-    // Iterate over the JSON result and create a table row for each item
-    jsonResult.each { item ->
-        html += """
-        <tr>
-            <td>${item.apiVersion}</td>
-            <td>${item.kind}</td>
-            <td>${item.deprecatedVersion}</td>
-        </tr>
-        """
-    }
-
-    html += """
-            </table>
-        </body>
-    </html>
-    """
-    return html
 }
 
