@@ -45,11 +45,32 @@ def call(Map args) {
         } else {
             echo "✅ No deprecated APIs found for cluster '${clusterInfo}'."
         }
-    } catch (Exception e) {
-        def failedFile = "kubent_check_failed_${clusterInfo}.json"
-        writeFile(file: failedFile, text: '{"status": "failure", "message": "Kubent check failed"}')
 
-        echo "❗ Kubent check failed for cluster '${clusterInfo}'. Failure report written to file."
+    } catch (Exception e) {
+        def failedFileJson = "kubent_check_failed_${clusterInfo}.json"
+        def failedFileHtml = "kubent_check_failed_${clusterInfo}.html"
+
+        // JSON file for programmatic access
+        writeFile(file: failedFileJson, text: '{"status": "failure", "message": "Kubent check failed"}')
+
+        // Simple HTML failure report
+        def htmlFailure = """
+        <html>
+          <body>
+            <h1 style="color:red;">❗ Kubent Check Failed</h1>
+            <p>Cluster: <strong>${clusterInfo}</strong></p>
+            <p>Reason: An error occurred while running the Kubent check.</p>
+            <p><strong>Exception:</strong></p>
+            <pre>${e.message}</pre>
+          </body>
+        </html>
+        """
+        writeFile(file: failedFileHtml, text: htmlFailure)
+
+        // Publish HTML failure report
+        publishHTML([reportName: "Kubent Failure Report", reportDir: ".", reportFiles: failedFileHtml])
+
+        echo "❗ Kubent check failed for cluster '${clusterInfo}'. Failure HTML report published."
     }
 }
 
