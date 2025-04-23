@@ -1,4 +1,4 @@
-def sendMessage(String status, String color, String stageName, String slackChannel, String errorMessage = "") {
+def sendMessage(String status, String color, String stageName, String slackChannel, String errorMessage = "", String summary = "") {
     def message = ""
     switch (status) {
         case "start":
@@ -6,6 +6,9 @@ def sendMessage(String status, String color, String stageName, String slackChann
             break
         case "success":
             message = ":white_check_mark: Stage *${stageName}* completed successfully"
+            if (summary) {
+                message += "\n\n*Details:*\n${summary}"
+            }
             break
         case "failure":
             message = ":x: Stage *${stageName}* failed\n*Reason:* `${errorMessage}`"
@@ -20,8 +23,8 @@ def sendMessage(String status, String color, String stageName, String slackChann
 def notifyStage(String stageName, String slackChannel, Closure body) {
     sendMessage("start", "#439FE0", stageName, slackChannel)
     try {
-        body()
-        sendMessage("success", "good", stageName, slackChannel)
+        def summary = body()
+        sendMessage("success", "good", stageName, slackChannel, "", summary ?: "")
     } catch (err) {
         sendMessage("failure", "danger", stageName, slackChannel, err.getMessage())
         throw err
