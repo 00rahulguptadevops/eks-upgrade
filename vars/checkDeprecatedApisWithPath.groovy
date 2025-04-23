@@ -49,9 +49,9 @@ def call(Map args) {
         def failedFile = "kubent_check_failed_${clusterInfo}.json"
         writeFile(file: failedFile, text: '{"status": "failure", "message": "Kubent check failed"}')
 
-        // Publish failure JSON report
+        // Publish failure JSON report (if needed)
         writeFile(file: failedFile, text: '{"status": "failure", "message": "Kubent check failed"}')
-        publishJSONReports(reports: failedFile)
+        publishJSONReports(reports: failedFile) // Remove this line if it's not needed.
 
         echo "❗ Kubent check failed for cluster '${clusterInfo}'. JSON report published."
     }
