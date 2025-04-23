@@ -1,4 +1,4 @@
-def sendMessage(String status, String color, String webhookCredId, String stageName) {
+def sendMessage(String status, String color, String stageName, String slackChannel) {
     def message = ""
     switch (status) {
         case "start":
@@ -12,31 +12,18 @@ def sendMessage(String status, String color, String webhookCredId, String stageN
             break
     }
 
-    withCredentials([string(credentialsId: webhookCredId, variable: 'SLACK_WEBHOOK')]) {
-        def payload = """
-        {
-            "attachments": [
-                {
-                    "color": "${color}",
-                    "text": "${message}"
-                }
-            ]
-        }
-        """
-        httpRequest httpMode: 'POST',
-                    contentType: 'APPLICATION_JSON',
-                    requestBody: payload,
-                    url: SLACK_WEBHOOK
-    }
+    slackSend channel: slackChannel,
+              color: color,
+              message: message
 }
 
-def notifyStage(String stageName, String webhookCredId, Closure body) {
-    sendMessage("start", "#439FE0", webhookCredId, stageName)
+def notifyStage(String stageName, String slackChannel, Closure body) {
+    sendMessage("start", "#439FE0", stageName, slackChannel)
     try {
         body()
-        sendMessage("success", "good", webhookCredId, stageName)
+        sendMessage("success", "good", stageName, slackChannel)
     } catch (err) {
-        sendMessage("failure", "danger", webhookCredId, stageName)
+        sendMessage("failure", "danger", stageName, slackChannel)
         throw err
     }
 }
