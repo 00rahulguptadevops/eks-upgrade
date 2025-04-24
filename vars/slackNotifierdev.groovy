@@ -19,7 +19,7 @@ def sendMessage(String status, String color, String stageName, String slackChann
               color: color,
               message: message
 
-    if (status == "failure" && fileToUpload) {
+    if (status == "failure" && fileToUpload?.trim()) {
         uploadFileToSlack(fileToUpload, slackChannel)
     }
 }
@@ -36,11 +36,11 @@ def notifyStage(String stageName, String slackChannel, Closure body) {
     }
 }
 
-def uploadFileToSlack(String filePath, String channelName) {
+def uploadFileToSlack(String filePath, String slackChannel) {
     withCredentials([string(credentialsId: 'slack-token', variable: 'SLACK_TOKEN')]) {
         sh """
             curl -F file=@${filePath} \\
-                 -F "channels=${channelName}" \\
+                 -F "channels=${slackChannel}" \\
                  -F "initial_comment=Deprecated API Report - Build #${env.BUILD_NUMBER}" \\
                  -F "title=${filePath}" \\
                  -H "Authorization: Bearer ${SLACK_TOKEN}" \\
