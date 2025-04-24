@@ -64,9 +64,12 @@ def call(Map params) {
 
     // Fail the build if deprecated APIs are found
     if (jsonList.size() > 0) {
-        error("❌ Deprecated APIs found in cluster '${clusterName}'. Failing pipeline.")
+        echo "❌ Deprecated APIs found in cluster '${clusterName}'. Failing pipeline."
+        currentBuild.result = 'FAILURE' // Fail the build explicitly
+        return
     }
 
+    // If no deprecated APIs are found, pass the build
     echo "✅ No deprecated APIs found in cluster '${clusterName}'"
 }
 
