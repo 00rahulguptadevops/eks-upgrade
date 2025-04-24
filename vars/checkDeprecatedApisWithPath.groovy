@@ -7,62 +7,69 @@ def call(Map args) {
 
     def result = sh(
         script: """
-            /usr/local/bin/docker run --rm --network host \\
-              -v ${kubePath}:/root/.kube/config \\
-              -v ~/.aws:/root/.aws \\
-              kubent:aws01 -t ${targetVersion} -o json -e -k /root/.kube/config
-        """,
-        returnStdout: true,
-        returnStatus: true
-    )
-
-    def exitCode = result
-    def output = sh(
-        script: """
-            /usr/local/bin/docker run --rm --network host \\
-              -v ${kubePath}:/root/.kube/config \\
-              -v ~/.aws:/root/.aws \\
-              kubent:aws01 -t ${targetVersion} -o json -e -k /root/.kube/config
+            set +e
+            OUTPUT=\$(/usr/local/bin/docker run --rm --network host \\
+                -v ${kubePath}:/root/.kube/config \\
+                -v ~/.aws:/root/.aws \\
+                kubent:aws01 -t ${targetVersion} -o json -e -k /root/.kube/config)
+            STATUS=\$?
+            echo "---KUBENT_OUTPUT_START---"
+            echo "\$OUTPUT"
+            echo "---KUBENT_OUTPUT_END---"
+            exit \$STATUS
         """,
         returnStdout: true
     ).trim()
 
-    // Extract JSON data from stdout
-    def jsonPattern = /\[\s*{.*}\s*\]/s
+    // Extract output between markers
+    def output = (result =~ /---KUBENT_OUTPUT_START---(.*)---KUBENT_OUTPUT_END---/s)[0][1].trim()
+    def jsonPattern = /\[\s*{.*?}\s*]/s
     def matcher = (output =~ jsonPattern)
     def jsonData = matcher ? matcher[0] : "[]"
     def jsonList = readJSON text: jsonData
 
-    // Prepare HTML
+    // Generate HTML
     def htmlContent = """
     <html><body>
-    <h1>Kubent Check Result</h1>
+    <h1>Kubent Check Report</h1>
     <p><b>Cluster:</b> ${clusterInfo}</p>
-    <p><b>Exit Code:</b> ${exitCode}</p>
-    <p><b>Raw Output:</b></p>
+    <h2>Raw Output</h2>
     <pre>${output.encodeAsHTML()}</pre>
     """
 
     if (jsonList && jsonList.size() > 0) {
-        htmlContent += "<h2>Deprecated APIs Found</h2><table border='1'><tr><th>Name</th><th>Namespace</th><th>Kind</th><th>API Version</th><th>RuleSet</th><th>Replace With</th><th>Since</th></tr>"
+        htmlContent += """
+        <h2>Deprecated APIs Detected</h2>
+        <table border="1" cellpadding="4" cellspacing="0">
+            <tr>
+                <th>Name</th><th>Namespace</th><th>Kind</th>
+                <th>API Version</th><th>RuleSet</th>
+                <th>Replace With</th><th>Since</th>
+            </tr>
+        """
         jsonList.each { item ->
-            htmlContent += "<tr><td>${item.Name}</td><td>${item.Namespace}</td><td>${item.Kind}</td><td>${item.ApiVersion}</td><td>${item.RuleSet}</td><td>${item.ReplaceWith}</td><td>${item.Since}</td></tr>"
+            htmlContent += """
+            <tr>
+                <td>${item.Name}</td><td>${item.Namespace}</td><td>${item.Kind}</td>
+                <td>${item.ApiVersion}</td><td>${item.RuleSet}</td>
+                <td>${item.ReplaceWith}</td><td>${item.Since}</td>
+            </tr>
+            """
         }
         htmlContent += "</table>"
+    } else {
+        htmlContent += "<p>No deprecated APIs found.</p>"
     }
 
     htmlContent += "</body></html>"
 
-    def htmlFile = "kubent_result_${clusterInfo}.html"
+    def htmlFile = "kubent_report_${clusterInfo}.html"
     writeFile file: htmlFile, text: htmlContent
     publishHTML([reportName: "Kubent Report - ${clusterInfo}", reportDir: ".", reportFiles: htmlFile])
 
-    if (exitCode != 0) {
-        error("❌ Kubent command failed for cluster ${clusterInfo}.")
-    }
-
+    // Fail the job if deprecated APIs are found
     if (jsonList && jsonList.size() > 0) {
-        error("❌ Deprecated APIs detected for cluster ${clusterInfo}. Failing pipeline.")
+        error("❌ Deprecated APIs detected in cluster ${clusterInfo}. Failing pipeline.")
     }
 
     echo "✅ No deprecated APIs found for cluster ${clusterInfo}."
