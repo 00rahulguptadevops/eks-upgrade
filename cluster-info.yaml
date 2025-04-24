@@ -1,0 +1,19 @@
+---
+- name: kube-cls-01
+  current_cluster_version: "1.30" 
+  target_version: 1.31
+  cluster_backup_taken: yes 
+  region: ap-south-1
+  node_pools:
+    - pool-1
+    - pool-2
+    - pool-3
+  kubeconfig_secret: kubeconfig
+  slack_channel: jenkins
+  add_ons:
+    - name: vpc-cni
+      namespace: kube-system
+      version: 1.x
+    - name: core-dns
+      namespace: kube-system
+      version: v1.11.4-eksbuild.2
