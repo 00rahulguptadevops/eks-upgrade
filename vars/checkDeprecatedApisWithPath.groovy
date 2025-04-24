@@ -31,6 +31,7 @@ def call(Map params) {
     def reportFile = "api-report/index.html"
     def reportDir = "api-report"
 
+    // Write HTML report
     writeFile file: reportFile, text: """
         <html>
         <head><title>Kubent Check Report</title></head>
@@ -45,6 +46,7 @@ def call(Map params) {
         </html>
     """
 
+    // Publish HTML report
     publishHTML(target: [
         reportDir           : reportDir,
         reportFiles         : 'index.html',
