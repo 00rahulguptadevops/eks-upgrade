@@ -33,7 +33,6 @@ def notifyStage(String stageName, String slackChannel, Closure body) {
             slackUploadFile(
                 channel: slackChannel,
                 filePath: outputFilePath,
-                filename: outputFilePath.split("/")[-1],
                 initialComment: ":page_facing_up: *Full output for stage `${stageName}`*"
             )
         }
