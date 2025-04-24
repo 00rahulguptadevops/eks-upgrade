@@ -17,13 +17,18 @@ def call(Map params) {
             echo "---KUBENT_OUTPUT_END---"
             exit \$STATUS
         """,
-        returnStdout: true
-    ).trim()
+        returnStdout: true,
+        returnStatus: true // Capture the exit code
+    )
 
-    // Extract output between markers
-    def output = result.split('---KUBENT_OUTPUT_START---')[1].split('---KUBENT_OUTPUT_END---')[0].trim()
+    def output = result.trim()
+    def exitCode = sh(script: "echo \$?", returnStdout: true).trim().toInteger()
 
-    // Try to extract JSON array of deprecated APIs
+    // Debug output
+    echo "Kubent output: ${output}"
+    echo "Kubent exit code: ${exitCode}"
+
+    // Extract JSON between markers
     def jsonPattern = /\[\s*{.*}\s*]/  // match a list of JSON objects
     def matcher = (output =~ jsonPattern)
     def jsonData = matcher ? matcher[0] : "[]"
@@ -49,9 +54,6 @@ def call(Map params) {
         </html>
     """
 
-    // Debug output to check if HTML file is created
-    echo "Generated HTML content: ${readFile(reportFile)}"
-
     // Publish the HTML report to Jenkins
     publishHTML(target: [
         reportDir: reportDir,
@@ -62,14 +64,18 @@ def call(Map params) {
         keepAll: true
     ])
 
-    // Fail the build if deprecated APIs are found
+    // Check if deprecated APIs are found and handle the pipeline result accordingly
     if (jsonList.size() > 0) {
         echo "❌ Deprecated APIs found in cluster '${clusterName}'. Failing pipeline."
         currentBuild.result = 'FAILURE' // Fail the build explicitly
-        return
+    } else {
+        echo "✅ No deprecated APIs found in cluster '${clusterName}'"
     }
 
-    // If no deprecated APIs are found, pass the build
-    echo "✅ No deprecated APIs found in cluster '${clusterName}'"
+    // If exit code is not zero, mark as failure
+    if (exitCode != 0) {
+        echo "❌ Kubent run failed with exit code: ${exitCode}. Failing pipeline."
+        currentBuild.result = 'FAILURE'
+    }
 }
 
