@@ -73,12 +73,11 @@ def call(Map args) {
     htmlContent += "</body></html>"
     writeFile(file: reportFileHtml, text: htmlContent)
 
-    publishHTML([
-        reportName: "Kubent Failure Report",
-        reportDir: ".",
-        reportFiles: reportFileHtml
-    ])
+    // publishHTML([
+    //     reportName: "Kubent Failure Report",
+    //     reportDir: ".",
+    //     reportFiles: reportFileHtml
+    // ])
 
     echo "❗ Kubent check failed for cluster '${clusterInfo}'. Failure HTML report published."
 }
-
