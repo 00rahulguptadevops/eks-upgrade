@@ -38,7 +38,7 @@ def notifyStage(String stageName, String slackChannel, Closure body) {
 
 def uploadFileToSlack(String filePath, String slackChannel) {
     withCredentials([string(credentialsId: 'slack-token', variable: 'SLACK_TOKEN')]) {
-        // Ensure Slack Channel is not empty
+        // If channel name is passed, resolve it to channel ID
         if (slackChannel?.trim()) {
             sh """
             curl -F file=@${filePath} \
@@ -53,5 +53,6 @@ def uploadFileToSlack(String filePath, String slackChannel) {
         }
     }
 }
+
 
 
