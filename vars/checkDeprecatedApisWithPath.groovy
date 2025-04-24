@@ -22,7 +22,8 @@ def call(Map params) {
     )
 
     def output = result.trim()
-    def exitCode = sh(script: "echo \$?", returnStdout: true).trim().toInteger()
+    def exitCode = sh(script: "echo \$?", returnStdout: true).trim()
+    exitCode = exitCode.toInteger() // Convert exit code to integer
 
     // Debug output
     echo "Kubent output: ${output}"
