@@ -1,4 +1,8 @@
-def call(String clusterName, String kubePath, String targetVersion = "1.32") {
+def call(Map params) {
+    def clusterName = params.clusterName
+    def kubePath = params.kubePath
+    def targetVersion = params.targetVersion ?: "1.32" // Default to 1.32 if not provided
+
     def result = sh(
         script: """
             set +e
@@ -50,6 +54,7 @@ def call(String clusterName, String kubePath, String targetVersion = "1.32") {
         keepAll             : true
     ])
 
+    // If deprecated APIs are found, fail the job
     if (jsonList.size() > 0) {
         error("❌ Deprecated APIs found in cluster '${clusterName}'. Failing pipeline.")
     }
