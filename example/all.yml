@@ -1,0 +1,88 @@
+# Ingress resource 1
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: my-ingress-1
+spec:
+  rules:
+  - host: app1.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          serviceName: my-service-1
+          servicePort: 80
+---
+# Ingress resource 2
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: my-ingress-2
+spec:
+  rules:
+  - host: app2.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          serviceName: my-service-2
+          servicePort: 80
+---
+# CronJob resource 1
+apiVersion: batch/v1beta1
+kind: CronJob
+metadata:
+  name: my-cronjob-1
+spec:
+  schedule: "0 * * * *" # Every hour
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: my-container
+            image: busybox
+            args:
+            - "/bin/sh"
+            - "-c"
+            - "echo Hello World"
+          restartPolicy: OnFailure
+---
+# CronJob resource 2
+apiVersion: batch/v1beta1
+kind: CronJob
+metadata:
+  name: my-cronjob-2
+spec:
+  schedule: "*/5 * * * *" # Every 5 minutes
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: my-container
+            image: busybox
+            args:
+            - "/bin/sh"
+            - "-c"
+            - "echo Hello World"
+          restartPolicy: OnFailure
+---
+
+# Ingress resource 3
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: my-ingress-3
+spec:
+  rules:
+  - host: app2.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          serviceName: my-service-2
+          servicePort: 80

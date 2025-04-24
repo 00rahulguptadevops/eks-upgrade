@@ -1,0 +1,81 @@
+@Library('Jenkinsshared') _  // Load the shared library
+
+def clusterInfo
+
+pipeline {
+    agent any
+
+    parameters {
+        base64File(name: 'cluster_properties_yamlfile', description: 'Upload your cluster YAML file')
+    }
+
+    stages {
+        stage('Pre-checks') {
+            steps {
+                withFileParameter('cluster_properties_yamlfile') {
+                    script {
+                        clusterInfo = readClusterYaml(env.cluster_properties_yamlfile)
+
+                        echo "Sending notification to Slack channel: ${clusterInfo.slack_channel}"
+
+                        slackNotifier.notifyStage('Pre-checks', clusterInfo.slack_channel) {
+                            def summary = ""
+
+                            def kubeconfigSecretId = clusterInfo.kubeconfig_secret
+
+                            withCredentials([file(credentialsId: kubeconfigSecretId, variable: 'SECRET_FILE')]) {
+                                def kubePath = "${env.SECRET_FILE}"
+
+                                // Validate k8s version
+                                checkVersion("${clusterInfo.current_cluster_version}", "${clusterInfo.target_version}")
+                                summary += ":bookmark_tabs: Upgrade Version check passed: ${clusterInfo.current_cluster_version} -> ${clusterInfo.target_version}\n"
+
+                                // Backup check
+                                echo "k8s backup: ${clusterInfo.cluster_backup_taken}"
+                                summary += ":cd: Eks Cluster Backup status: ${clusterInfo.cluster_backup_taken}\n"
+
+                                // Validate kubeconfig
+                                def result = sh(
+                                    script: """
+                                        /usr/local/bin/docker run --rm --network host \\
+                                          -v ${kubePath}:/file -e KUBECONFIG=/file \\
+                                          bitnami/kubectl cluster-info > /dev/null 2>&1 && echo "valid" || echo "invalid"
+                                    """,
+                                    returnStdout: true
+                                ).trim()
+
+                                summary += result == "valid"
+                                    ? ":white_check_mark: Kubeconfig is valid\n"
+                                    : ":x: Kubeconfig is invalid\n"
+
+                                // Run kubent check
+                                sh """
+                                    /usr/local/bin/docker run --rm --network host \\
+                                      -v ${kubePath}:/root/.kube/config \\
+                                      -v ~/.aws:/root/.aws \\
+                                      kubent:aws01 -t ${clusterInfo.target_version} -o json -e -k /root/.kube/config
+                                """
+                                summary += ":mag: API deprecated check: No deprecated APIs found\n"
+                            }
+                            return summary
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('k8s cluster upgrade') {
+            steps {
+                script {
+                    slackNotifier.notifyStage('k8s cluster upgrade', clusterInfo.slack_channel) {
+                        def userInput = input message: 'Do you want to upgrade the cluster?', ok: 'Approve', parameters: []
+                            sh """
+                                echo 'Upgrade proceeding for cluster: ${clusterInfo.name}' > t.txt
+                            """
+                    }
+                }
+            }
+        }
+    }
+}
+
