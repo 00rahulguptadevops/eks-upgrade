@@ -6,69 +6,116 @@ def call(Map args) {
     try {
         echo "🔍 Running deprecated API check for cluster: ${clusterInfo}"
 
-        // Run the Kubent check to get the deprecated API results in JSON format
-        def result = sh(script: """
-            /usr/local/bin/docker run --rm --network host \\
-              -v ${kubePath}:/root/.kube/config \\
-              -v ~/.aws:/root/.aws \\
-              kubent:aws01 -t ${targetVersion} -o json -e -k /root/.kube/config
-        """, returnStdout: true).trim()
+        def result = sh(
+            script: """
+                /usr/local/bin/docker run --rm --network host \\
+                  -v ${kubePath}:/root/.kube/config \\
+                  -v ~/.aws:/root/.aws \\
+                  kubent:aws01 -t ${targetVersion} -o json -e -k /root/.kube/config
+            """,
+            returnStdout: true
+        ).trim()
 
-        // Parse the JSON result
         def jsonResult = readJSON(text: result)
+        def baseFileName = "kubent_report_${clusterInfo}"
+        def reportFileJson = "${baseFileName}.json"
+        def reportFileHtml = "${baseFileName}.html"
 
-        // Check if deprecated APIs were found
         if (jsonResult.size() > 0) {
-            def reportFileJson = "deprecated_apis_report_${clusterInfo}.json"
             writeFile(file: reportFileJson, text: result)
 
-            // Convert JSON to HTML format
-            def reportFileHtml = "deprecated_apis_report_${clusterInfo}.html"
-            def htmlContent = "<html><body><h1>Deprecated APIs Report for ${clusterInfo}</h1><table border='1'>"
-            htmlContent += "<tr><th>Resource</th><th>API</th><th>Version</th><th>Deprecated</th></tr>"
+            def htmlContent = """
+                <html>
+                <head><title>Deprecated APIs Report</title></head>
+                <body>
+                <h1>Deprecated APIs Report for ${clusterInfo}</h1>
+                <table border='1'>
+                <tr>
+                    <th>Name</th><th>Namespace</th><th>Kind</th><th>API Version</th>
+                    <th>Rule Set</th><th>Replace With</th><th>Deprecated Since</th>
+                </tr>
+            """
 
-            // Loop through the JSON result and generate HTML table rows
-            jsonResult.each { api ->
-                api.resources.each { resource ->
-                    htmlContent += "<tr><td>${resource.name}</td><td>${api.name}</td><td>${api.version}</td><td>${api.deprecated}</td></tr>"
-                }
+            jsonResult.each { item ->
+                htmlContent += "<tr><td>${item.Name}</td><td>${item.Namespace}</td><td>${item.Kind}</td><td>${item.ApiVersion}</td><td>${item.RuleSet}</td><td>${item.ReplaceWith}</td><td>${item.Since}</td></tr>"
             }
-            htmlContent += "</table></body></html>"
 
-            // Write the HTML content to a file
+            htmlContent += "</table></body></html>"
             writeFile(file: reportFileHtml, text: htmlContent)
 
-            // Publish the HTML report to Jenkins
-            publishHTML([reportName: "Deprecated APIs Report", reportDir: ".", reportFiles: reportFileHtml])
+            publishHTML([
+                reportName: "Kubent Report",
+                reportDir: ".",
+                reportFiles: reportFileHtml
+            ])
 
             echo "❌ Deprecated APIs found in cluster '${clusterInfo}'. HTML report published."
         } else {
             echo "✅ No deprecated APIs found for cluster '${clusterInfo}'."
         }
 
-    } catch (Exception e) {
-        def failedFileJson = "kubent_check_failed_${clusterInfo}.json"
-        def failedFileHtml = "kubent_check_failed_${clusterInfo}.html"
+    } catch (e) {
+        echo "⚠️ Kubent check failed: ${e.message}"
 
-        // JSON file for programmatic access
-        writeFile(file: failedFileJson, text: '{"status": "failure", "message": "Kubent check failed"}')
+        // Try to capture any partial output
+        def output = ""
+        try {
+            output = sh(
+                script: """
+                    /usr/local/bin/docker run --rm --network host \\
+                      -v ${kubePath}:/root/.kube/config \\
+                      -v ~/.aws:/root/.aws \\
+                      kubent:aws01 -t ${targetVersion} -o json -e -k /root/.kube/config
+                """,
+                returnStdout: true,
+                returnStatus: false
+            ).trim()
+        } catch (ignore) {
+            // intentionally ignore nested exception
+        }
 
-        // Simple HTML failure report
-        def htmlFailure = """
-        <html>
-          <body>
-            <h1 style="color:red;">❗ Kubent Check Failed</h1>
-            <p>Cluster: <strong>${clusterInfo}</strong></p>
-            <p>Reason: An error occurred while running the Kubent check.</p>
-            <p><strong>Exception:</strong></p>
-            <pre>${e.message}</pre>
-          </body>
-        </html>
+        def failedFileHtml = "kubent_failure_${clusterInfo}.html"
+        def html = """
+            <html>
+            <head><title>Kubent Failure Report</title></head>
+            <body>
+                <h1 style='color:red;'>Kubent Check Failed</h1>
+                <p><strong>Cluster:</strong> ${clusterInfo}</p>
+                <p><strong>Reason:</strong> An error occurred while running the Kubent check.</p>
+                <p><strong>Exception:</strong> ${e.getMessage()}</p>
         """
-        writeFile(file: failedFileHtml, text: htmlFailure)
 
-        // Publish HTML failure report
-        publishHTML([reportName: "Kubent Failure Report", reportDir: ".", reportFiles: failedFileHtml])
+        // Try parsing output as JSON
+        if (output?.startsWith("[") || output?.startsWith("{")) {
+            try {
+                def fallbackJson = readJSON(text: output)
+                html += """
+                    <h2>Partial Output</h2>
+                    <table border='1'>
+                        <tr>
+                            <th>Name</th><th>Namespace</th><th>Kind</th><th>API Version</th>
+                            <th>Rule Set</th><th>Replace With</th><th>Deprecated Since</th>
+                        </tr>
+                """
+                fallbackJson.each { item ->
+                    html += "<tr><td>${item.Name}</td><td>${item.Namespace}</td><td>${item.Kind}</td><td>${item.ApiVersion}</td><td>${item.RuleSet}</td><td>${item.ReplaceWith}</td><td>${item.Since}</td></tr>"
+                }
+                html += "</table>"
+            } catch (parseEx) {
+                html += "<pre>${output}</pre>"
+            }
+        } else if (output) {
+            html += "<h2>Raw Output</h2><pre>${output}</pre>"
+        }
+
+        html += "</body></html>"
+        writeFile(file: failedFileHtml, text: html)
+
+        publishHTML([
+            reportName: "Kubent Report",
+            reportDir: ".",
+            reportFiles: failedFileHtml
+        ])
 
         echo "❗ Kubent check failed for cluster '${clusterInfo}'. Failure HTML report published."
     }
