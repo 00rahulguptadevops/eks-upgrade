@@ -93,4 +93,3 @@ def uploadFileToSlack(String filePath, String slackChannel) {
         }
     }
 }
-
