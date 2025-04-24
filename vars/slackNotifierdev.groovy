@@ -52,7 +52,7 @@ def uploadFileToSlack(String filePath, String slackChannel) {
                 -H "Authorization: Bearer \$SLACK_TOKEN" \
                 -H "Content-Type: application/json" \
                 -d '{
-                    "filename": "\$(basename ${filePath})",  // <-- Escaped $ for basename
+                    "filename": "\$(basename ${filePath})",  // <-- Escape $ for Groovy
                     "length": ${fileSize},
                     "channels": ["${slackChannel}"]
                 }'
