@@ -38,14 +38,14 @@ def notifyStage(String stageName, String slackChannel, Closure body) {
 
 def uploadFileToSlack(String filePath, String slackChannel) {
     withCredentials([string(credentialsId: 'slack-token', variable: 'SLACK_TOKEN')]) {
-        sh """
-            curl -F file=@${filePath} \\
-                 -F "channels=${slackChannel}" \\
-                 -F "initial_comment=Deprecated API Report - Build #${env.BUILD_NUMBER}" \\
-                 -F "title=${filePath}" \\
-                 -H "Authorization: Bearer ${SLACK_TOKEN}" \\
-                 https://slack.com/api/files.upload
-        """
+        sh '''
+         curl -F file=@deprecated_output.json \
+         -F "channels=${slackChannel}" \
+         -F "initial_comment=Deprecated API Report - Build #${BUILD_NUMBER}" \
+         -F "title=deprecated_output.json" \
+         -H "Authorization: Bearer $SLACK_TOKEN" \
+         https://slack.com/api/files.upload
+        '''
     }
 }
 
