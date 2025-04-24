@@ -3,6 +3,7 @@ def call(Map params) {
     def kubePath = params.kubePath
     def targetVersion = params.targetVersion ?: "1.32" // Default to 1.32 if not provided
 
+    // Run kubent to check for deprecated APIs
     def result = sh(
         script: """
             set +e
@@ -19,19 +20,20 @@ def call(Map params) {
         returnStdout: true
     ).trim()
 
-    // ✅ Extract only the output between markers using split (Groovy-compatible)
+    // Extract output between markers
     def output = result.split('---KUBENT_OUTPUT_START---')[1].split('---KUBENT_OUTPUT_END---')[0].trim()
 
-    // ✅ Try to extract JSON array of deprecated APIs
+    // Try to extract JSON array of deprecated APIs
     def jsonPattern = /\[\s*{.*}\s*]/  // match a list of JSON objects
     def matcher = (output =~ jsonPattern)
     def jsonData = matcher ? matcher[0] : "[]"
     def jsonList = readJSON text: jsonData
 
-    def reportFile = "api-report/index.html"
+    // Set report file and directory
     def reportDir = "api-report"
+    def reportFile = "${reportDir}/index.html"
 
-    // Write HTML report
+    // Create HTML report
     writeFile file: reportFile, text: """
         <html>
         <head><title>Kubent Check Report</title></head>
@@ -46,17 +48,20 @@ def call(Map params) {
         </html>
     """
 
-    // Publish HTML report
+    // Check if the file was created and output it for debugging
+    echo "Generated HTML content: ${readFile(reportFile)}"
+
+    // Publish the HTML report to Jenkins
     publishHTML(target: [
-        reportDir           : reportDir,
-        reportFiles         : 'index.html',
-        reportName          : 'Kubent Failure Report',
-        allowMissing        : false,
+        reportDir: reportDir,
+        reportFiles: 'index.html',
+        reportName: 'Kubent Failure Report',
+        allowMissing: false,
         alwaysLinkToLastBuild: true,
-        keepAll             : true
+        keepAll: true
     ])
 
-    // If deprecated APIs are found, fail the job
+    // Fail the build if deprecated APIs are found
     if (jsonList.size() > 0) {
         error("❌ Deprecated APIs found in cluster '${clusterName}'. Failing pipeline.")
     }
