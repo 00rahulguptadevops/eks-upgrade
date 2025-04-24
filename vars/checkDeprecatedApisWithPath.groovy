@@ -29,9 +29,10 @@ def call(Map params) {
     def jsonData = matcher ? matcher[0] : "[]"
     def jsonList = readJSON text: jsonData
 
-    // Set report file and directory
-    def reportDir = "api-report"
+    // Ensure report folder exists
+    def reportDir = "${env.WORKSPACE}/api-report"
     def reportFile = "${reportDir}/index.html"
+    sh "mkdir -p ${reportDir}"
 
     // Create HTML report
     writeFile file: reportFile, text: """
@@ -48,7 +49,7 @@ def call(Map params) {
         </html>
     """
 
-    // Check if the file was created and output it for debugging
+    // Debug output to check if HTML file is created
     echo "Generated HTML content: ${readFile(reportFile)}"
 
     // Publish the HTML report to Jenkins
