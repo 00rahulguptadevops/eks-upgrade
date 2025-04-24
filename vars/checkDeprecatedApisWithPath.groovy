@@ -3,82 +3,70 @@ def call(Map args) {
     String targetVersion = args.targetVersion.toString()
     String clusterInfo = args.clusterInfo
 
-    echo "🔍 Running deprecated API check for cluster: ${clusterInfo}"
-
-    def reportFileHtml = "kubent_failure_report_${clusterInfo}.html"
-    def htmlContent = ""
-    def kubentOutput = ""
-    def kubentExitCode = 0
-
-    // Run kubent and capture both exit code and output
-    kubentExitCode = sh(
-        script: """
-            set +e
-            OUTPUT=\$(/usr/local/bin/docker run --rm --network host \\
-                -v ${kubePath}:/root/.kube/config \\
-                -v ~/.aws:/root/.aws \\
-                kubent:aws01 -t ${targetVersion} -o json -e -k /root/.kube/config)
-            EXIT_CODE=\$?
-            echo "\$OUTPUT" > kubent_output.json
-            echo \$EXIT_CODE > kubent_exit_code.txt
-            exit 0
-        """,
-        returnStatus: true
-    )
-
-    // Read output and exit code
-    kubentOutput = readFile("kubent_output.json").trim()
-    kubentExitCode = readFile("kubent_exit_code.txt").trim().toInteger()
-
-    if (kubentExitCode == 0) {
-        echo "✅ Kubent check passed. No deprecated APIs found or non-failing exit."
-        return
-    }
-
-    // Start HTML
-    htmlContent += """
-        <html>
-        <head><title>Kubent Failure Report</title></head>
-        <body>
-            <h1 style='color:red;'>Kubent Check Failed</h1>
-            <p><strong>Cluster:</strong> ${clusterInfo}</p>
-            <p><strong>Reason:</strong> An error occurred while running the Kubent check.</p>
-            <p><strong>Exit Code:</strong> ${kubentExitCode}</p>
-    """
-
-    // Try to parse JSON output and render table
     try {
-        def jsonResult = readJSON(text: kubentOutput)
+        echo "🔍 Running deprecated API check for cluster: ${clusterInfo}"
+
+        // Run kubent and capture stdout
+        def result = sh(script: """
+            /usr/local/bin/docker run --rm --network host \\
+              -v ${kubePath}:/root/.kube/config \\
+              -v ~/.aws:/root/.aws \\
+              kubent:aws01 -t ${targetVersion} -o json -e -k /root/.kube/config
+        """, returnStdout: true).trim()
+
+        def jsonResult = readJSON(text: result)
+        def reportFileJson = "deprecated_apis_report_${clusterInfo}.json"
+        writeFile(file: reportFileJson, text: result)
+
         if (jsonResult && jsonResult.size() > 0) {
-            htmlContent += """
-                <h2>Detected Deprecated APIs</h2>
-                <table border='1'>
-                    <tr>
-                        <th>Name</th><th>Namespace</th><th>Kind</th><th>API Version</th>
-                        <th>Rule Set</th><th>Replace With</th><th>Since</th>
-                    </tr>
-            """
+            // Generate HTML
+            def reportFileHtml = "deprecated_apis_report_${clusterInfo}.html"
+            def htmlContent = "<html><body><h1>Deprecated APIs Report for ${clusterInfo}</h1><table border='1'>"
+            htmlContent += "<tr><th>Name</th><th>Namespace</th><th>Kind</th><th>API Version</th><th>RuleSet</th><th>ReplaceWith</th><th>Since</th></tr>"
+
             jsonResult.each { item ->
                 htmlContent += "<tr><td>${item.Name}</td><td>${item.Namespace}</td><td>${item.Kind}</td><td>${item.ApiVersion}</td><td>${item.RuleSet}</td><td>${item.ReplaceWith}</td><td>${item.Since}</td></tr>"
             }
-            htmlContent += "</table>"
+
+            htmlContent += "</table></body></html>"
+            writeFile(file: reportFileHtml, text: htmlContent)
+
+            // Publish HTML
+            publishHTML([reportName: "Deprecated APIs Report", reportDir: ".", reportFiles: reportFileHtml])
+            echo "❌ Deprecated APIs found in cluster '${clusterInfo}'. HTML report published."
+
+            // Fail the pipeline
+            error("Deprecated APIs detected in cluster '${clusterInfo}'. Failing pipeline.")
         } else {
-            htmlContent += "<p>No deprecated APIs found in parsed JSON output.</p>"
+            echo "✅ No deprecated APIs found for cluster '${clusterInfo}'."
         }
-    } catch (e) {
-        htmlContent += "<h2>Raw Output</h2><pre>${kubentOutput}</pre>"
+
+    } catch (Exception e) {
+        def failedHtmlFile = "kubent_failed_${clusterInfo}.html"
+        def failedJsonFile = "kubent_failed_${clusterInfo}.json"
+        def errorOutput = e.getMessage()
+
+        // Try extracting whatever was printed (even partial JSON) if available
+        def fallbackOutput = errorOutput.find(/\[.*\]/) ?: "[]"
+        writeFile(file: failedJsonFile, text: fallbackOutput)
+
+        def htmlContent = """
+        <html><body>
+        <h1>Kubent Check Failed</h1>
+        <p><b>Cluster:</b> ${clusterInfo}</p>
+        <p><b>Reason:</b> An error occurred while running the Kubent check.</p>
+        <p><b>Exception:</b> ${errorOutput}</p>
+        <h2>Partial Output (if any)</h2>
+        <pre>${fallbackOutput}</pre>
+        </body></html>
+        """
+        writeFile(file: failedHtmlFile, text: htmlContent)
+
+        publishHTML([reportName: "Kubent Failure Report", reportDir: ".", reportFiles: failedHtmlFile])
+        echo "❗ Kubent check failed for cluster '${clusterInfo}'. Failure HTML report published."
+
+        // Fail the pipeline
+        error("Kubent execution failed for cluster '${clusterInfo}'.")
     }
-
-    // End HTML and write file
-    htmlContent += "</body></html>"
-    writeFile(file: reportFileHtml, text: htmlContent)
-
-    publishHTML([
-        reportName: "Kubent Failure Report",
-        reportDir: ".",
-        reportFiles: reportFileHtml
-    ])
-
-    echo "❗ Kubent check failed for cluster '${clusterInfo}'. Failure HTML report published."
 }
 
