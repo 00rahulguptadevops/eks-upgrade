@@ -1,10 +1,4 @@
-def call(Map args) {
-    String kubePath = args.kubePath
-    String targetVersion = args.targetVersion.toString()
-    String clusterInfo = args.clusterInfo
-
-    echo "🔍 Running deprecated API check for cluster: ${clusterInfo}"
-
+def call(String clusterName, String kubePath, String targetVersion = "1.32") {
     def result = sh(
         script: """
             set +e
@@ -21,57 +15,45 @@ def call(Map args) {
         returnStdout: true
     ).trim()
 
-    // Extract output between markers
-    def output = (result =~ /---KUBENT_OUTPUT_START---(.*)---KUBENT_OUTPUT_END---/s)[0][1].trim()
-    def jsonPattern = /\[\s*{.*?}\s*]/s
+    // ✅ Extract only the output between markers using split (Groovy-compatible)
+    def output = result.split('---KUBENT_OUTPUT_START---')[1].split('---KUBENT_OUTPUT_END---')[0].trim()
+
+    // ✅ Try to extract JSON array of deprecated APIs
+    def jsonPattern = /\[\s*{.*}\s*]/  // match a list of JSON objects
     def matcher = (output =~ jsonPattern)
     def jsonData = matcher ? matcher[0] : "[]"
     def jsonList = readJSON text: jsonData
 
-    // Generate HTML
-    def htmlContent = """
-    <html><body>
-    <h1>Kubent Check Report</h1>
-    <p><b>Cluster:</b> ${clusterInfo}</p>
-    <h2>Raw Output</h2>
-    <pre>${output.encodeAsHTML()}</pre>
+    def reportFile = "api-report/index.html"
+    def reportDir = "api-report"
+
+    writeFile file: reportFile, text: """
+        <html>
+        <head><title>Kubent Check Report</title></head>
+        <body>
+        <h1>Kubent Check Report</h1>
+        <p><strong>Cluster:</strong> ${clusterName}</p>
+        <p><strong>Kubent Raw Output:</strong></p>
+        <pre>${output}</pre>
+        <p><strong>Deprecated APIs Detected:</strong></p>
+        <pre>${groovy.json.JsonOutput.prettyPrint(jsonData)}</pre>
+        </body>
+        </html>
     """
 
-    if (jsonList && jsonList.size() > 0) {
-        htmlContent += """
-        <h2>Deprecated APIs Detected</h2>
-        <table border="1" cellpadding="4" cellspacing="0">
-            <tr>
-                <th>Name</th><th>Namespace</th><th>Kind</th>
-                <th>API Version</th><th>RuleSet</th>
-                <th>Replace With</th><th>Since</th>
-            </tr>
-        """
-        jsonList.each { item ->
-            htmlContent += """
-            <tr>
-                <td>${item.Name}</td><td>${item.Namespace}</td><td>${item.Kind}</td>
-                <td>${item.ApiVersion}</td><td>${item.RuleSet}</td>
-                <td>${item.ReplaceWith}</td><td>${item.Since}</td>
-            </tr>
-            """
-        }
-        htmlContent += "</table>"
-    } else {
-        htmlContent += "<p>No deprecated APIs found.</p>"
+    publishHTML(target: [
+        reportDir           : reportDir,
+        reportFiles         : 'index.html',
+        reportName          : 'Kubent Failure Report',
+        allowMissing        : false,
+        alwaysLinkToLastBuild: true,
+        keepAll             : true
+    ])
+
+    if (jsonList.size() > 0) {
+        error("❌ Deprecated APIs found in cluster '${clusterName}'. Failing pipeline.")
     }
 
-    htmlContent += "</body></html>"
-
-    def htmlFile = "kubent_report_${clusterInfo}.html"
-    writeFile file: htmlFile, text: htmlContent
-    publishHTML([reportName: "Kubent Report - ${clusterInfo}", reportDir: ".", reportFiles: htmlFile])
-
-    // Fail the job if deprecated APIs are found
-    if (jsonList && jsonList.size() > 0) {
-        error("❌ Deprecated APIs detected in cluster ${clusterInfo}. Failing pipeline.")
-    }
-
-    echo "✅ No deprecated APIs found for cluster ${clusterInfo}."
+    echo "✅ No deprecated APIs found in cluster '${clusterName}'"
 }
 
