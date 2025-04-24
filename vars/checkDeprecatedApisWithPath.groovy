@@ -5,31 +5,35 @@ def call(Map args) {
 
     echo "🔍 Running deprecated API check for cluster: ${clusterInfo}"
 
-    def output = ''
-    def exitCode = 0
+    def result = sh(
+        script: """
+            /usr/local/bin/docker run --rm --network host \\
+              -v ${kubePath}:/root/.kube/config \\
+              -v ~/.aws:/root/.aws \\
+              kubent:aws01 -t ${targetVersion} -o json -e -k /root/.kube/config
+        """,
+        returnStdout: true,
+        returnStatus: true
+    )
 
-    try {
-        output = sh(
-            script: """
-                /usr/local/bin/docker run --rm --network host \\
-                  -v ${kubePath}:/root/.kube/config \\
-                  -v ~/.aws:/root/.aws \\
-                  kubent:aws01 -t ${targetVersion} -o json -e -k /root/.kube/config
-            """,
-            returnStdout: true,
-            returnStatus: true
-        )
-        exitCode = output.exitValue
-        output = output.toString().trim()
-    } catch (Exception e) {
-        output = e.getMessage()
-        exitCode = 1
-    }
+    def exitCode = result
+    def output = sh(
+        script: """
+            /usr/local/bin/docker run --rm --network host \\
+              -v ${kubePath}:/root/.kube/config \\
+              -v ~/.aws:/root/.aws \\
+              kubent:aws01 -t ${targetVersion} -o json -e -k /root/.kube/config
+        """,
+        returnStdout: true
+    ).trim()
 
+    // Extract JSON data from stdout
     def jsonPattern = /\[\s*{.*}\s*\]/s
-    def jsonData = (output =~ jsonPattern) ? (output =~ jsonPattern)[0] : "[]"
-    def jsonList = readJSON(text: jsonData)
+    def matcher = (output =~ jsonPattern)
+    def jsonData = matcher ? matcher[0] : "[]"
+    def jsonList = readJSON text: jsonData
 
+    // Prepare HTML
     def htmlContent = """
     <html><body>
     <h1>Kubent Check Result</h1>
