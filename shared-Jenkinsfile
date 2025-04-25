@@ -1,4 +1,4 @@
-@Library('Jenkinsshared') _  // Load the shared library
+@Library('Jenkinsshared') _  
 
 def clusterInfo
 
