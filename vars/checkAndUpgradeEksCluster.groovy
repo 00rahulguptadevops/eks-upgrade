@@ -21,7 +21,7 @@
 // }
 
 
-def checkAndUpgradeEksCluster(String clusterName, String region, String targetVersion) {
+def call(String clusterName, String region, String targetVersion) {
     // Fetch current cluster version (example using eksctl)
     def currentVersion = sh(
         script: "/usr/local/bin/docker run --rm -v ~/.aws:/root/.aws public.ecr.aws/eksctl/eksctl get cluster --name ${clusterName} --region ${region} -o json | jq -r '.[0].Version'",
@@ -40,7 +40,8 @@ def checkAndUpgradeEksCluster(String clusterName, String region, String targetVe
 
         // Example command to upgrade the cluster (you can replace this with your actual upgrade logic)
         def upgradeResult = sh(
-            script: "/usr/local/bin/docker run --rm -v ~/.aws:/root/.aws public.ecr.aws/eksctl/eksctl upgrade cluster --name=${clusterName} --version=${targetVersion}  --region=${region} --approve",
+         //   script: "/usr/local/bin/docker run --rm -v ~/.aws:/root/.aws public.ecr.aws/eksctl/eksctl upgrade cluster --name=${clusterName} --version=${targetVersion}  --region=${region} --approve",
+             script: "echo done",
             returnStdout: true
         ).trim()
 
