@@ -30,7 +30,7 @@ def call(String clusterName, String region, String targetVersion) {
         returnStdout: true
     ).trim()
 
-    echo ${upgradeResult}
+    echo "${upgradeResult}"
 
     if (upgradeResult.contains("cluster ${clusterName} control plane has been upgraded to version ${targetVersion}")) {
         return "true"
