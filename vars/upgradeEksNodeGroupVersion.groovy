@@ -6,7 +6,7 @@ def call(String clusterName, String nodegroupName, String region, String targeVe
       --cluster ${clusterName} \
       --name ${nodegroupName} \
       --region ${region} \
-      --kubernetes-version 
+      --kubernetes-version ${targeVersion}
     """
 
     echo "✅ Upgrade complete for nodegroup '${nodegroupName}'"
