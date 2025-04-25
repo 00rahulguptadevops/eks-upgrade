@@ -6,7 +6,6 @@ def call(String clusterName, String nodegroupName, String region) {
       --cluster ${clusterName} \
       --name ${nodegroupName} \
       --region ${region} \
-      --approve
     """
 
     echo "✅ Upgrade complete for nodegroup '${nodegroupName}'"
