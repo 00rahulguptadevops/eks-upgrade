@@ -11,10 +11,10 @@ def call(String clusterName, String region, String targetVersion){
     echo "Taget Version: ${targetVersion}"
 
     if (currentVersion == targetVersion) {
-        echo "Cluster already running with ${tagerVersion}"
+        echo "Cluster already running with ${targetVersion}"
         return false //Indicate Skip
     } else {
-        echo "Upgrading Cluster ${tagerVersion}"
+        echo "Upgrading Cluster ${targetVersion}"
         return true
     }
 }
