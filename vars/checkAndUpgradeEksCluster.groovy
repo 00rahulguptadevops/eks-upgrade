@@ -9,7 +9,7 @@
 //     ).trim()
 //     echo "Cluster CurrentVersion: ${currentVersion}"
 //     echo "Taget Version: ${targetVersion}"
-
+   // "cluster ${clusterName} control plane has been upgraded to version ${targetVersion}"
 //     if (currentVersion == targetVersion) {
 //         echo "Cluster already running with ${targetVersion}"
 //         return false //Indicate Skip
@@ -32,7 +32,7 @@ def call(String clusterName, String region, String targetVersion) {
 
     echo "Upgrade Result: ${upgradeResult}"
 
-    if (upgradeResult.contains("cluster ${clusterName} control plane has been upgraded to version ${targetVersion}")) {
+    if (upgradeResult.contains("no cluster version update required")) {
         return "true"
     } else {
         echo "Cluster upgrade failed"
