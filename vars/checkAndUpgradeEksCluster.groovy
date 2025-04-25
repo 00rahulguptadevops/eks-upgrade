@@ -14,7 +14,7 @@ def call(String clusterName, String region, String targetVersion){
         echo "Cluster already running with ${targetVersion}"
         return false //Indicate Skip
     } else {
-        echo "Upgrading Cluster ${targetVersion}"
+        /usr/local/bin/docker run --rm -v ~/.aws:/root/.aws public.ecr.aws/eksctl/eksctl upgrade cluster --name=${clusterName} --version=${targetVersion}  --region=${region} --approve
         return true
     }
 }
