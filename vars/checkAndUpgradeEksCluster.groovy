@@ -26,7 +26,7 @@ def call(String clusterName, String region, String targetVersion) {
     
     def upgradeResult = sh(
       //  script: "/usr/local/bin/docker run --rm -v ~/.aws:/root/.aws public.ecr.aws/eksctl/eksctl upgrade cluster --name=${clusterName} --version=${targetVersion}  --region=${region} --approve",
-        script: "/usr/local/bin/docker run --rm -v /Users/rahulgupta/.aws:/root/.aws public.ecr.aws/eksctl/eksctl upgrade cluster --name=eks-cluster --version=1.31 --region=ap-south-1 --approve"
+        script: "/usr/local/bin/docker run --rm -v /Users/rahulgupta/.aws:/root/.aws public.ecr.aws/eksctl/eksctl upgrade cluster --name=eks-cluster --version=1.31 --region=ap-south-1 --approve",
         returnStdout: true
     ).trim()
 
