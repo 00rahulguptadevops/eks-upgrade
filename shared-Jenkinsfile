@@ -38,8 +38,9 @@ pipeline {
                                 def result = sh(
                                     script: """
                                         /usr/local/bin/docker run --rm --network host \\
+                                          -v ~/.aws:/root/.aws \\
                                           -v ${kubePath}:/file -e KUBECONFIG=/file \\
-                                          bitnami/kubectl cluster-info > /dev/null 2>&1 && echo "valid" || echo "invalid"
+                                          heyvaldemar/aws-kubectl kubectl cluster-info > /dev/null 2>&1 && echo "valid" || echo "invalid"
                                     """,
                                     returnStdout: true
                                 ).trim()
@@ -66,16 +67,109 @@ pipeline {
 
         stage('k8s cluster upgrade') {
             steps {
-                script {
+                script {    
+                    def currentVersion = getEksClusterVersion(clusterInfo.name, clusterInfo.region)
+
+                    if (currentVersion == clusterInfo.target_version) {
+                        echo "Cluster is already at the target version: ${clusterInfo.target_version}. Skipping upgrade."
+                        currentBuild.result = 'SUCCESS'
+                        return  // exit stage early
+                    }                
                     slackNotifier.notifyStage('k8s cluster upgrade', clusterInfo.slack_channel) {
+                        def summary = ""
                         def userInput = input message: 'Do you want to upgrade the cluster?', ok: 'Approve', parameters: []
-                            sh """
-                                echo 'Upgrade proceeding for cluster: ${clusterInfo.name}' > t.txt
-                            """
+                        def result = checkAndUpgradeEksCluster(clusterInfo.name, clusterInfo.region, clusterInfo.target_version)
+                        summary += result == "true"
+                            ? ":white_check_mark: Cluster upgraded to version ${clusterInfo.target_version}\n"
+                            : ":x: The cluster is already running version ${clusterInfo.target_version}\n"
+                    return summary
                     }
                 }
             }
         }
+
+        stage('k8s Node Group Upgrade') {
+            steps {
+                script {
+                    def nodegroupVersionMap = checkEksNodeGroupVersion(clusterInfo.name, clusterInfo.region)
+
+                    def skipped = []
+                    def upgraded = []
+                    def failures = []
+                    def nodegroupsToUpgrade = []
+
+                    clusterInfo.node_pools.each { nodepool ->
+                        def currentVersion = nodegroupVersionMap[nodepool]
+                        if (!currentVersion) {
+                            echo "⚠️ Warning: Nodegroup '${nodepool}' not found in cluster."
+                            failures << nodepool
+                        } else if (currentVersion != clusterInfo.target_version) {
+                            echo "🔧 Nodegroup '${nodepool}' version is ${currentVersion}. Target is ${clusterInfo.target_version}. Upgrade required."
+                            nodegroupsToUpgrade << nodepool
+                        } else {
+                            echo "✅ Nodegroup '${nodepool}' is already at target version ${currentVersion}. Skipping upgrade."
+                            skipped << nodepool
+                        }
+                    }
+
+                    if (nodegroupsToUpgrade.isEmpty()) {
+                        echo "🎉 All nodegroups are already up-to-date."
+                        return
+                    }
+
+                    def userInput = input(
+                        id: 'NodegroupUpgradeApproval',
+                        message: "🚀 Proceed with upgrading the following nodegroups?\n${nodegroupsToUpgrade.join(', ')}",
+                        ok: 'Yes'
+                    )
+
+                    nodegroupsToUpgrade.each { nodepool ->
+                        slackNotifier.notifyStage("Nodegroup Upgrade: ${nodepool}", clusterInfo.slack_channel) {
+                            echo "🔧 Starting upgrade for nodepool '${nodepool}'..."
+                            def upgradeResult = upgradeEksNodeGroupVersion(clusterInfo.name, nodepool, clusterInfo.region, clusterInfo.target_version)
+                            if (upgradeResult == "true") {
+                                upgraded << nodepool
+                                return ":white_check_mark: Upgrade complete for nodegroup '${nodepool}' version: '${clusterInfo.target_version}'"
+                            } else {
+                                failures << nodepool
+                                return ":x: Upgrade failed for nodegroup '${nodepool}'"
+                            }
+                        }
+                    }
+
+                    echo "✅ Upgraded: ${upgraded}"
+                    echo "🟦 Skipped: ${skipped}"
+                    echo "❌ Failures: ${failures}"
+
+                    if (failures) {
+                        error("❌ Some nodegroups failed to upgrade: ${failures.join(', ')}")
+                    }
+                }
+            }
+        }
+
+        stage('EKS Add-ons Upgrade') {
+            steps {
+                script {
+                    slackNotifier.notifyStage('EKS Add-ons Upgrade', clusterInfo.slack_channel) {
+                        def summary = ""
+                        def result = eksAddonManager(clusterInfo.add_ons, clusterInfo.target_version, clusterInfo.name, clusterInfo.region)
+                        result.each { addonResult ->
+                            def name = addonResult.name
+                            def version = addonResult.version
+                            def status = addonResult.status
+                            summary += status == "updated"
+                                ? ":white_check_mark: ${name} upgraded to ${version}\n"
+                                : status == "skipped"
+                                ? ":arrow_right: ${name} already up to date (${version})\n"
+                                : ":x: ${name} failed to upgrade\n"
+                        }
+                        return summary
+                    }
+                }
+            }
+        }
+
     }
 }
 
