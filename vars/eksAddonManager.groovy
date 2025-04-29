@@ -7,7 +7,7 @@ def call(List addons, String clusterVersion) {
 
         // Get current version using eksctl
         def currentVersion = sh(
-            script: "eksctl get addon --name ${name} --cluster ${env.CLUSTER_NAME} -o json | jq -r '.[0].AddonVersion'",
+            script: "/usr/local/bin/docker run --rm -v ~/.aws:/root/.aws public.ecr.aws/eksctl/eksctl get addon --name ${name} --cluster ${env.CLUSTER_NAME} -o json | jq -r '.[0].AddonVersion'",
             returnStdout: true
         ).trim()
 
@@ -16,7 +16,7 @@ def call(List addons, String clusterVersion) {
         } else {
             // Validate target version is available
             def availableVersions = sh(
-                script: "eksctl describe addon-versions --name ${name} --kubernetes-version ${clusterVersion} -o json | jq -r '.[0].AddonVersions[].AddonVersion'",
+                script: "/usr/local/bin/docker run --rm -v ~/.aws:/root/.aws public.ecr.aws/eksctl/eksctl describe addon-versions --name ${name} --kubernetes-version ${clusterVersion} -o json | jq -r '.[0].AddonVersions[].AddonVersion'",
                 returnStdout: true
             ).readLines().collect { it.trim() }
 
@@ -41,7 +41,7 @@ def call(List addons, String clusterVersion) {
     toUpgrade.each { addon ->
         echo "🚀 Upgrading ${addon.name} to ${addon.version}"
         sh """
-            eksctl update addon \
+            /usr/local/bin/docker run --rm -v ~/.aws:/root/.aws public.ecr.aws/eksctl/eksctl update addon \
               --name ${addon.name} \
               --cluster ${env.CLUSTER_NAME} \
               --version ${addon.version} \
