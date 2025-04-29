@@ -1,6 +1,4 @@
-def call(List addons, String clusterVersion) {
-    def clusterName = env.CLUSTER_NAME
-    def region = env.AWS_REGION ?: 'ap-south-1'
+def call(List addons, String clusterVersion, String clusterName, String region) {
     def toUpgrade = []
     def results = []
 
