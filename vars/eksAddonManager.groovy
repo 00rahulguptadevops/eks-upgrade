@@ -1,54 +1,84 @@
 def call(List addons, String clusterVersion) {
+    def clusterName = env.CLUSTER_NAME
+    def region = env.AWS_REGION ?: 'ap-south-1'
     def toUpgrade = []
+    def results = []
 
     addons.each { addon ->
         def name = addon.name
         def targetVersion = addon.version
 
-        // Get current version using eksctl
+        echo "🔍 Getting current version of ${name}"
+
         def currentVersion = sh(
-            script: "/usr/local/bin/docker run --rm -v ~/.aws:/root/.aws public.ecr.aws/eksctl/eksctl get addon --name ${name} --cluster ${env.CLUSTER_NAME} -o json | jq -r '.[0].AddonVersion'",
+            script: """
+                /usr/local/bin/docker run --rm -v ~/.aws:/root/.aws amazon/aws-cli eks describe-addon \
+                    --region ${region} \
+                    --cluster-name ${clusterName} \
+                    --addon-name ${name} \
+                    --query 'addon.addonVersion' \
+                    --output text
+            """,
             returnStdout: true
         ).trim()
 
         if (currentVersion == targetVersion) {
-            echo "✅ ${name} is already at version ${targetVersion}"
-        } else {
-            // Validate target version is available
-            def availableVersions = sh(
-                script: "/usr/local/bin/docker run --rm -v ~/.aws:/root/.aws public.ecr.aws/eksctl/eksctl describe addon-versions --name ${name} --kubernetes-version ${clusterVersion} -o json | jq -r '.[0].AddonVersions[].AddonVersion'",
-                returnStdout: true
-            ).readLines().collect { it.trim() }
-
-            if (!availableVersions.contains(targetVersion)) {
-                error "❌ Version ${targetVersion} is NOT valid for ${name} on EKS ${clusterVersion}"
-            }
-
-            toUpgrade << addon
+            echo "✅ ${name} already at version ${targetVersion}"
+            results << [name: name, version: targetVersion, status: 'skipped']
+            return
         }
+
+        echo "🔍 Validating ${targetVersion} compatibility for ${name} on EKS ${clusterVersion}"
+
+        def validVersions = sh(
+            script: """
+                /usr/local/bin/docker run --rm -v ~/.aws:/root/.aws amazon/aws-cli eks describe-addon-versions \
+                    --region ${region} \
+                    --addon-name ${name} \
+                    --kubernetes-version ${clusterVersion} \
+                    --query 'addons[0].addonVersions[*].addonVersion' \
+                    --output text
+            """,
+            returnStdout: true
+        ).trim().tokenize()
+
+        if (!validVersions.contains(targetVersion)) {
+            error "❌ ${targetVersion} is NOT compatible with ${name} on EKS ${clusterVersion}"
+        }
+
+        toUpgrade << addon
     }
 
     if (toUpgrade.isEmpty()) {
-        echo "✅ All add-ons are already up to date."
-        return
+        echo "✅ All add-ons are already up to date"
+        return results
     }
 
-    echo "🔧 Add-ons to upgrade:"
+    echo "🛠️ Add-ons to upgrade:"
     toUpgrade.each { echo "- ${it.name} → ${it.version}" }
 
-    input message: "Proceed with upgrading ${toUpgrade.size()} add-ons?", ok: "Yes"
+    input message: "Do you want to proceed with upgrading ${toUpgrade.size()} add-ons?", ok: "Approve"
 
     toUpgrade.each { addon ->
-        echo "🚀 Upgrading ${addon.name} to ${addon.version}"
-        sh """
-            /usr/local/bin/docker run --rm -v ~/.aws:/root/.aws public.ecr.aws/eksctl/eksctl update addon \
-              --name ${addon.name} \
-              --cluster ${env.CLUSTER_NAME} \
-              --version ${addon.version} \
-              --force
-        """
-        echo "✅ ${addon.name} upgraded"
+        def name = addon.name
+        def version = addon.version
+        try {
+            echo "🚀 Upgrading ${name} to version ${version} using eksctl"
+            sh """
+                /usr/local/bin/docker run --rm -v ~/.aws:/root/.aws public.ecr.aws/eksctl/eksctl update addon \
+                  --name ${name} \
+                  --cluster ${clusterName} \
+                  --version ${version} \
+                  --region ${region} \
+                  --force
+            """
+            echo "✅ ${name} upgraded to ${version}"
+            results << [name: name, version: version, status: 'updated']
+        } catch (err) {
+            echo "❌ Failed to upgrade ${name}: ${err.getMessage()}"
+            results << [name: name, version: version, status: 'failed']
+        }
     }
 
-    echo "🎉 Upgrade process completed."
+    return results
 }
