@@ -16,17 +16,18 @@ def call(String kubeconfig, String targetVersion) {
 
     try {
         output = sh(script: command, returnStdout: true).trim()
+        status = 0
     } catch (err) {
-        status = 1
         output = err.getMessage()
+        status = 1  // Assume failure
     }
 
-    // Save JSON output
+    // Save raw output as JSON file
     def jsonFile = 'kubent_output.json'
     writeFile file: jsonFile, text: output
     archiveArtifacts artifacts: jsonFile, onlyIfSuccessful: false
 
-    // Generate HTML report
+    // Try parsing the JSON to build an HTML report
     try {
         def data = new JsonSlurper().parseText(output)
         def html = """
@@ -74,27 +75,28 @@ def call(String kubeconfig, String targetVersion) {
         archiveArtifacts artifacts: 'kubent_report.html', onlyIfSuccessful: false
         echo "📄 HTML report generated and archived."
     } catch (err) {
-        echo "⚠️ Failed to generate HTML report: ${err.message}"
+        echo "⚠️ Failed to parse kubent output or generate HTML: ${err.message}"
     }
 
-    // Determine status
-    def summary = ""
+    // Final status and summary
+    def summary = ''
     if (status == 0) {
         summary = "✅ PASS: No deprecated APIs found."
         echo summary
     } else {
+        def count = 0
         try {
-            def json = new JsonSlurper().parseText(output)
-            def count = json instanceof List ? json.size() : 0
-            summary = "❌ FAIL: ${count} deprecated API(s) found."
-        } catch (parseErr) {
-            summary = "❌ FAIL: Deprecated APIs detected (JSON parse error)."
-        }
+            def parsed = new JsonSlurper().parseText(output)
+            if (parsed instanceof List) {
+                count = parsed.size()
+            }
+        } catch (ignored) { /* fallback to generic error */ }
 
+        summary = "❌ FAIL: ${count} deprecated API(s) found."
         echo summary
-        echo "📄 See artifacts: kubent_output.json and kubent_report.html"
-        error(summary) // Fail the job
+        echo "📄 See kubent_output.json and kubent_report.html for details."
+        error(summary) // fail the build step
     }
 
-    return summary
+    return [status: (status == 0 ? 'PASS' : 'FAIL'), summary: summary]
 }
