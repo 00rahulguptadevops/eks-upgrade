@@ -1,6 +1,7 @@
 def call(List addons, String clusterVersion, String clusterName, String region) {
     def toUpgrade = []
     def results = []
+    def summary = ""
 
     addons.each { addon ->
         def name = addon.name
@@ -23,10 +24,11 @@ def call(List addons, String clusterVersion, String clusterName, String region) 
         if (currentVersion == targetVersion) {
             echo "✅ ${name} already at version ${targetVersion}"
             results << [name: name, version: targetVersion, status: 'skipped']
+            summary += ":arrow_right: ${name} already up to date (${targetVersion})\n"
             return
         }
 
-        echo "🔍 Validating ${targetVersion} compatibility for ${name} on EKS ${clusterVersion}"
+        echo "🔍 Validating compatibility of ${targetVersion} for ${name} on EKS ${clusterVersion}"
 
         def validVersions = sh(
             script: """
@@ -49,7 +51,7 @@ def call(List addons, String clusterVersion, String clusterName, String region) 
 
     if (toUpgrade.isEmpty()) {
         echo "✅ All add-ons are already up to date"
-        return results
+        return [results: results, summary: summary]
     }
 
     echo "🛠️ Add-ons to upgrade:"
@@ -61,22 +63,24 @@ def call(List addons, String clusterVersion, String clusterName, String region) 
         def name = addon.name
         def version = addon.version
         try {
-            echo "🚀 Upgrading ${name} to version ${version} using eksctl"
+            echo "🚀 Upgrading ${name} to version ${version}"
             sh """
                 /usr/local/bin/docker run --rm -v ~/.aws:/root/.aws public.ecr.aws/eksctl/eksctl update addon \
-                  --name ${name} \
-                  --cluster ${clusterName} \
-                  --version ${version} \
-                  --region ${region} \
-                  --force
+                    --name ${name} \
+                    --cluster ${clusterName} \
+                    --version ${version} \
+                    --region ${region} \
+                    --force
             """
             echo "✅ ${name} upgraded to ${version}"
             results << [name: name, version: version, status: 'updated']
+            summary += ":white_check_mark: ${name} upgraded to ${version}\n"
         } catch (err) {
             echo "❌ Failed to upgrade ${name}: ${err.getMessage()}"
             results << [name: name, version: version, status: 'failed']
+            summary += ":x: ${name} failed to upgrade\n"
         }
     }
 
-    return results
+    return [results: results, summary: summary]
 }
