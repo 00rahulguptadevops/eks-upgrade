@@ -1,13 +1,15 @@
 def call(List addons, String clusterVersion, String clusterName, String region) {
     def toUpgrade = []
+    def failedToValidate = []
     def results = []
-    def summary = ""
+    def preSummary = ""
+    def postSummary = ""
 
     addons.each { addon ->
         def name = addon.name
         def targetVersion = addon.version
 
-        echo "🔍 Getting current version of ${name}"
+        echo "🔍 Checking ${name}"
 
         def currentVersion = sh(
             script: """
@@ -24,11 +26,9 @@ def call(List addons, String clusterVersion, String clusterName, String region) 
         if (currentVersion == targetVersion) {
             echo "✅ ${name} already at version ${targetVersion}"
             results << [name: name, version: targetVersion, status: 'skipped']
-            summary += ":arrow_right: ${name} already up to date (${targetVersion})\n"
+            preSummary += ":arrow_right: ${name} already up to date (${targetVersion})\n"
             return
         }
-
-        echo "🔍 Validating compatibility of ${targetVersion} for ${name} on EKS ${clusterVersion}"
 
         def validVersions = sh(
             script: """
@@ -43,44 +43,52 @@ def call(List addons, String clusterVersion, String clusterName, String region) 
         ).trim().tokenize()
 
         if (!validVersions.contains(targetVersion)) {
-            error "❌ ${targetVersion} is NOT compatible with ${name} on EKS ${clusterVersion}"
+            def msg = ":x: ${targetVersion} is NOT compatible with ${name} on EKS ${clusterVersion}"
+            echo msg
+            results << [name: name, version: targetVersion, status: 'invalid']
+            failedToValidate << [name: name, version: targetVersion]
+            preSummary += "${msg}\n"
+            return
         }
 
         toUpgrade << addon
+        preSummary += ":gear: ${name} will be upgraded from ${currentVersion} → ${targetVersion}\n"
     }
 
-    if (toUpgrade.isEmpty()) {
-        echo "✅ All add-ons are already up to date"
-        return [results: results, summary: summary]
+    if (toUpgrade.isEmpty() && failedToValidate.isEmpty()) {
+        preSummary += "\n✅ All add-ons are already up to date"
+        return [summary: preSummary, failedToValidate: failedToValidate]
     }
 
-    echo "🛠️ Add-ons to upgrade:"
-    toUpgrade.each { echo "- ${it.name} → ${it.version}" }
-
-    input message: "Do you want to proceed with upgrading ${toUpgrade.size()} add-ons?", ok: "Approve"
+    input message: "Proceed with upgrading ${toUpgrade.size()} add-ons?", ok: "Yes, upgrade"
 
     toUpgrade.each { addon ->
         def name = addon.name
         def version = addon.version
+
         try {
-            echo "🚀 Upgrading ${name} to version ${version}"
+            echo "🚀 Upgrading ${name} to ${version}"
             sh """
+                set -euo pipefail
                 /usr/local/bin/docker run --rm -v ~/.aws:/root/.aws public.ecr.aws/eksctl/eksctl update addon \
-                    --name ${name} \
-                    --cluster ${clusterName} \
-                    --version ${version} \
-                    --region ${region} \
+                    --name '${name}' \
+                    --cluster '${clusterName}' \
+                    --version '${version}' \
+                    --region '${region}' \
                     --force
             """
             echo "✅ ${name} upgraded to ${version}"
             results << [name: name, version: version, status: 'updated']
-            summary += ":white_check_mark: ${name} upgraded to ${version}\n"
+            postSummary += ":white_check_mark: ${name} upgraded to ${version}\n"
         } catch (err) {
             echo "❌ Failed to upgrade ${name}: ${err.getMessage()}"
             results << [name: name, version: version, status: 'failed']
-            summary += ":x: ${name} failed to upgrade\n"
+            postSummary += ":x: ${name} failed to upgrade\n"
         }
     }
 
-    return [results: results, summary: summary]
+    return [
+        summary: preSummary + "\n---\n" + postSummary,
+        failedToValidate: failedToValidate
+    ]
 }
