@@ -10,14 +10,15 @@ def call(Map args = [:]) {
 
     // Run kubent and capture output and exit code
     def exitCode = sh(
-        script: """
-            /usr/local/bin/docker run --rm --network host \\
-            -v ${kubeconfig}:/root/.kube/config \\
-            -v ~/.aws:/root/.aws \\
-            kubent:aws01 -t ${targetVersion} -o json -e -k /root/.kube/config > ${outputFile} 2>&1
-        """,
-        returnStatus: true
+      script: """
+        /usr/local/bin/docker run --rm --network host \\
+          -v ${kubeconfig}:/root/.kube/config \\
+          -v ~/.aws:/root/.aws \\
+          kubent:aws01 -t ${targetVersion} -o json -e -k /root/.kube/config > ${outputFile} 2>&1
+      """,
+      returnStatus: true
     )
+
 
     def output = readFile(outputFile).trim()
     exitCode = readFile(exitCodeFile).trim().toInteger()
