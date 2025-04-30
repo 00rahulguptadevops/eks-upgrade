@@ -20,7 +20,7 @@ def call(Map args = [:]) {
     )
 
     def output = readFile(outputFile).trim()
-    def exitCode = readFile(exitCodeFile).trim().toInteger()
+    exitCode = readFile(exitCodeFile).trim().toInteger()
 
     // Archive raw output
     writeFile file: 'kubent_output_raw.txt', text: output
