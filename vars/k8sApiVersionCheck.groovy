@@ -24,6 +24,11 @@ def call(String kubeconfig, String targetVersion) {
 
     def summary = ''
     try {
+        if (!output.contains('[')) {
+        echo "⚠️ Output does not contain valid JSON array. Raw output:"
+        echo output.take(300)
+        error("❌ kubent did not produce a valid JSON response. Check kubent_output_raw.txt")
+        }
         def jsonPart = output.substring(output.indexOf('['))
         def data = new JsonSlurper().parseText(jsonPart)
         def count = data.size()
