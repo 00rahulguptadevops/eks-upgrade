@@ -1,5 +1,6 @@
 def call(String kubeconfig, String targetVersion) {
-    def outputFile = 'kubent_output_raw.txt'
+    def outputFile = 'kubent_output.json'
+    def summary = ''
 
     def exitCode = sh(
         script: """
@@ -12,16 +13,19 @@ def call(String kubeconfig, String targetVersion) {
     )
 
     def output = readFile(outputFile)
+    writeFile file: outputFile, text: output
+    archiveArtifacts artifacts: outputFile, allowEmptyArchive: true
 
-    // Archive raw output
-    writeFile file: 'kubent_output.json', text: output
-    archiveArtifacts artifacts: 'kubent_output.json', allowEmptyArchive: true
+    def reportLink = "${env.BUILD_URL}artifact/${outputFile}"
 
     if (exitCode != 0) {
-        echo "❌ FAIL: Deprecated APIs found."
-        echo output.take(500)  // Show trimmed output in console
-        error("Deprecated APIs present. Please upgrade before continuing.")
+        echo "❌ Deprecated APIs found!"
+        echo "📄 JSON report: ${reportLink}"
+        summary = "❌ FAIL: Deprecated APIs found.\n📄 Report: ${reportLink}"
+        return [status: 'FAIL', summary: summary]
     } else {
-        echo "✅ PASS: No deprecated APIs found."
+        echo "✅ No deprecated APIs found."
+        summary = "✅ PASS: No deprecated APIs found.\n📄 Report: ${reportLink}"
+        return [status: 'PASS', summary: summary]
     }
 }
