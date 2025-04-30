@@ -5,5 +5,15 @@ def call(String clusterName, String region) {
     ).trim()
 
     echo "Current version of the cluster: ${currentVersion}"
+    
+
+    if (currentVersion == clusterInfo.target_version) {
+        echo "Cluster is already at the target version: ${clusterInfo.target_version}. Skipping upgrade."
+        currentBuild.result = 'SUCCESS'
+        return  // exit stage early
+    }  
     return currentVersion
 }
+
+
+    
