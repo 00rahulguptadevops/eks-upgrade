@@ -1,106 +1,63 @@
 import groovy.json.JsonSlurper
-import groovy.json.JsonOutput
 
-def call(String kubeconfig, String targetVersion) {
+def call(Map args = [:]) {
+    def kubeconfig = args.kubeconfig ?: error("Missing 'kubeconfig' argument")
+    def targetVersion = args.targetVersion ?: error("Missing 'targetVersion' argument")
+
     def command = """
         /usr/local/bin/docker run --rm --network host \\
-            -v ${kubeconfig}:/root/.kube/config \\
-            -v ${System.getProperty("user.home")}/.aws:/root/.aws \\
-            kubent:aws01 -t ${targetVersion} -o json -e -k /root/.kube/config
-    """
-
-    echo "📦 Running kubent check for deprecated Kubernetes APIs..."
+        -v ${kubeconfig}:/root/.kube/config \\
+        -v ~/.aws:/root/.aws \\
+        kubent:aws01 -t ${targetVersion} -o json -e -k /root/.kube/config
+    """.stripIndent().trim()
 
     def output = ''
+    def exitCode = 0
+
     try {
-        output = sh(script: "${command} 2>&1", returnStdout: true).trim()
+        output = sh(script: command, returnStdout: true).trim()
     } catch (err) {
+        // Even if it "fails", we still get the output
         output = err.getMessage()
+        exitCode = err.getCauses()?.first()?.getExitCode() ?: 1
     }
 
-    // Always save raw output
+    // Always write and archive raw output
     writeFile file: 'kubent_output_raw.txt', text: output
     archiveArtifacts artifacts: 'kubent_output_raw.txt', onlyIfSuccessful: false
 
     def summary = ''
-    try {
-        if (!output.contains('[')) {
-        echo "⚠️ Output does not contain valid JSON array. Raw output:"
-        echo output.take(300)
-        error("❌ kubent did not produce a valid JSON response. Check kubent_output_raw.txt")
+    def status = 'PASS'
+
+    // Try parsing JSON if present
+    if (output.contains('[')) {
+        try {
+            def jsonPart = output.substring(output.indexOf('['))
+            def data = new JsonSlurper().parseText(jsonPart)
+            def count = data.size()
+
+            summary = "❌ ${count} deprecated API(s) found."
+            status = 'FAIL'
+
+            // Also write HTML report if needed
+            def html = "<html><body><h2>Deprecated APIs</h2><pre>${groovy.json.JsonOutput.prettyPrint(jsonPart)}</pre></body></html>"
+            writeFile file: 'kubent_report.html', text: html
+            archiveArtifacts artifacts: 'kubent_report.html', onlyIfSuccessful: false
+
+        } catch (e) {
+            echo "⚠️ Failed to parse JSON output: ${e.message}"
+            summary = "⚠️ kubent output is not valid JSON."
         }
-        def jsonPart = output.substring(output.indexOf('['))
-        def data = new JsonSlurper().parseText(jsonPart)
-        def count = data.size()
-
-        // Save cleaned JSON
-        def prettyJson = JsonOutput.prettyPrint(JsonOutput.toJson(data))
-        writeFile file: 'kubent_clean.json', text: prettyJson
-        archiveArtifacts artifacts: 'kubent_clean.json', onlyIfSuccessful: false
-
-        // Generate HTML report
-        def html = """
-        <html>
-          <head>
-            <title>Kubent Report</title>
-            <style>
-              body { font-family: Arial; padding: 20px; }
-              table { border-collapse: collapse; width: 100%; }
-              th, td { border: 1px solid #ccc; padding: 8px; }
-              th { background-color: #f4f4f4; }
-            </style>
-          </head>
-          <body>
-            <h2>Kubent Deprecated API Report</h2>
-            <table>
-              <tr>
-                <th>Name</th>
-                <th>Namespace</th>
-                <th>Kind</th>
-                <th>API Version</th>
-                <th>Rule Set</th>
-                <th>Replacement</th>
-                <th>Since</th>
-              </tr>
-        """
-
-        data.each { item ->
-            html += """
-            <tr>
-              <td>${item.Name}</td>
-              <td>${item.Namespace}</td>
-              <td>${item.Kind}</td>
-              <td>${item.ApiVersion}</td>
-              <td>${item.RuleSet}</td>
-              <td>${item.ReplaceWith}</td>
-              <td>${item.Since}</td>
-            </tr>
-            """
-        }
-
-        html += """
-            </table>
-          </body>
-        </html>
-        """
-
-        writeFile file: 'kubent_report.html', text: html
-        archiveArtifacts artifacts: 'kubent_report.html', onlyIfSuccessful: false
-        echo "📄 HTML report generated and archived."
-
-        if (count > 0) {
-            summary = "❌ FAIL: ${count} deprecated APIs found."
-            echo summary
-            error(summary)
-        } else {
-            summary = "✅ PASS: No deprecated APIs found."
-            echo summary
-        }
-
-    } catch (Exception ex) {
-        echo "⚠️ Failed to parse JSON output: ${ex.message}"
-        error("❌ Unable to parse kubent output. Check kubent_output_raw.txt")
+    } else {
+        echo "⚠️ Output does not contain valid JSON array. Raw output shown above."
+        summary = "⚠️ kubent did not produce JSON output."
     }
 
-    return [status: 'PASS', summary: summary]
+    if (exitCode != 0) {
+        echo summary
+        error(summary)
+    }
+
+    echo "✅ PASS: No deprecated APIs found."
+    return [status: status, summary: summary]
 }
