@@ -1,51 +1,61 @@
-// def call(String clusterName, String nodegroupName, String region, String targeVersion) {
-//     echo "Upgrading nodegroup '${nodegroupName}' in cluster '${clusterName}'..."
+def call(Map clusterInfo) {
+    def nodegroupVersionMap = checkEksNodeGroupVersion(clusterInfo.name, clusterInfo.region)
 
-//     sh """
-//     /usr/local/bin/docker run --rm -v ~/.aws:/root/.aws public.ecr.aws/eksctl/eksctl upgrade nodegroup \
-//       --cluster ${clusterName} \
-//       --name ${nodegroupName} \
-//       --region ${region} \
-//       --kubernetes-version ${targeVersion} \
-//       --wait=false
-//     """
+    def skipped = []
+    def upgraded = []
+    def failures = []
+    def nodegroupsToUpgrade = []
 
-//     echo "✅ Upgrade complete for nodegroup '${nodegroupName}'"
-// }
-
-
-def call(String clusterName, String nodegroupName, String region, String targetVersion) {
-    echo "Checking version for nodegroup '${nodegroupName}' in cluster '${clusterName}'..."
-
-    // Get current version of the nodegroup
-    def currentVersion = sh(
-        script: "/usr/local/bin/docker run --rm -v ~/.aws:/root/.aws public.ecr.aws/eksctl/eksctl get nodegroup --cluster ${clusterName} --region ${region} -o json | jq -r '.[] | select(.Name==\"${nodegroupName}\") | .Version'",
-        returnStdout: true
-    ).trim()
-
-    echo "🔍 Current version of '${nodegroupName}': ${currentVersion}"
-
-    if (currentVersion == targetVersion) {
-        echo "✅ Nodegroup '${nodegroupName}' is already at target version ${targetVersion}. Skipping upgrade."
-        return "skipped"
+    clusterInfo.node_pools.each { nodepool ->
+        def currentVersion = nodegroupVersionMap[nodepool]
+        if (!currentVersion) {
+            echo "⚠️ Warning: Nodegroup '${nodepool}' not found in cluster."
+            failures << nodepool
+        } else if (currentVersion != clusterInfo.target_version) {
+            echo "🔧 Nodegroup '${nodepool}' version is ${currentVersion}. Target is ${clusterInfo.target_version}. Upgrade required."
+            nodegroupsToUpgrade << nodepool
+        } else {
+            echo "✅ Nodegroup '${nodepool}' is already at target version ${currentVersion}. Skipping upgrade."
+            skipped << nodepool
+        }
     }
 
-    try {
-        echo "⬆️ Upgrading nodegroup '${nodegroupName}' to version ${targetVersion}..."
+    if (nodegroupsToUpgrade.isEmpty()) {
+        echo "🎉 All nodegroups are already up-to-date."
+        return
+    }
 
-        sh """
-        /usr/local/bin/docker run --rm -v ~/.aws:/root/.aws public.ecr.aws/eksctl/eksctl upgrade nodegroup \
-          --cluster ${clusterName} \
-          --name ${nodegroupName} \
-          --region ${region} \
-          --kubernetes-version ${targetVersion} \
-          --wait=false
-        """
+    input(
+        id: 'NodegroupUpgradeApproval',
+        message: "🚀 Proceed with upgrading the following nodegroups?\n${nodegroupsToUpgrade.join(', ')}",
+        ok: 'Yes'
+    )
 
-        echo "✅ Upgrade command completed for nodegroup '${nodegroupName}'"
-        return "true"
-    } catch (e) {
-        echo "❌ Upgrade failed for nodegroup '${nodegroupName}': ${e.message}"
-        return "false"
+    nodegroupsToUpgrade.each { nodepool ->
+        slackNotifier.notifyStage("Nodegroup Upgrade: ${nodepool}", clusterInfo.slack_channel) {
+            echo "🔧 Starting upgrade for nodepool '${nodepool}'..."
+            def result = upgradeEksNodeGroupVersion(
+                clusterInfo.name,
+                nodepool,
+                clusterInfo.region,
+                clusterInfo.target_version
+            )
+
+            if (result == "true") {
+                upgraded << nodepool
+                return ":white_check_mark: Upgrade complete for nodegroup '${nodepool}'"
+            } else {
+                failures << nodepool
+                return ":x: Upgrade failed for nodegroup '${nodepool}'"
+            }
+        }
+    }
+
+    echo "✅ Upgraded: ${upgraded}"
+    echo "🟦 Skipped: ${skipped}"
+    echo "❌ Failures: ${failures}"
+
+    if (failures) {
+        error("❌ Some nodegroups failed to upgrade: ${failures.join(', ')}")
     }
 }
