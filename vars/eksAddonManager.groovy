@@ -40,7 +40,7 @@ def call(List addons, String clusterVersion, String clusterName, String region) 
 
         if (!validVersions.contains(targetVersion)) {
             summary += ":x: ${targetVersion} is NOT compatible with ${name} on EKS ${clusterVersion}\n"
-            failedToValidate << [name: name, version: targetVersion]
+            failedToValidate << addon
             return
         }
 
@@ -53,13 +53,19 @@ def call(List addons, String clusterVersion, String clusterName, String region) 
         def failedNames = failedToValidate.collect { it.name }.join(', ')
         summary += "\n❌ Validation failed for: ${failedNames}"
         echo summary
-        error("❌ Validation failed for add-ons: ${failedNames}")
+        return [
+            summary: summary,
+            failedAddons: failedToValidate
+        ]
     }
 
     // ✅ All add-ons validated
     if (toUpgrade.isEmpty()) {
         summary += "✅ All add-ons are already up to date\n"
-        return [summary: summary]
+        return [
+            summary: summary,
+            failedAddons: []
+        ]
     }
 
     // 🛑 Ask for approval before upgrading
@@ -85,5 +91,8 @@ def call(List addons, String clusterVersion, String clusterName, String region) 
         }
     }
 
-    return [summary: summary]
+    return [
+        summary: summary,
+        failedAddons: []
+    ]
 }
