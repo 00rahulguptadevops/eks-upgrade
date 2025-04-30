@@ -25,7 +25,7 @@ def call(String kubeconfig, String targetVersion) {
         error(summary) // ⛔️ Fail the job
     } else {
         echo "✅ No deprecated APIs found."
-        summary = "✅ PASS: No deprecated APIs found.\n📄 Report: ${reportLink}"
+        summary = "✅ API Check: No deprecated APIs found.\n📄 Report: ${reportLink}"
     }
 
     return [status: (exitCode == 0 ? 'PASS' : 'FAIL'), summary: summary]
