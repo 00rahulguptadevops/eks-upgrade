@@ -1,15 +1,13 @@
 def call(List addons, String clusterVersion, String clusterName, String region) {
     def toUpgrade = []
     def failedToValidate = []
-    def results = []
-    def preSummary = ""
-    def postSummary = ""
+    def summary = ""
 
     addons.each { addon ->
         def name = addon.name
         def targetVersion = addon.version
 
-        echo "🔍 Checking ${name}"
+        echo "🔍 Validating add-on: ${name}"
 
         def currentVersion = sh(
             script: """
@@ -24,9 +22,7 @@ def call(List addons, String clusterVersion, String clusterName, String region) 
         ).trim()
 
         if (currentVersion == targetVersion) {
-            echo "✅ ${name} already at version ${targetVersion}"
-            results << [name: name, version: targetVersion, status: 'skipped']
-            preSummary += ":arrow_right: ${name} already up to date (${targetVersion})\n"
+            summary += ":arrow_right: ${name} already up to date (${targetVersion})\n"
             return
         }
 
@@ -43,23 +39,30 @@ def call(List addons, String clusterVersion, String clusterName, String region) 
         ).trim().tokenize()
 
         if (!validVersions.contains(targetVersion)) {
-            def msg = ":x: ${targetVersion} is NOT compatible with ${name} on EKS ${clusterVersion}"
-            echo msg
-            results << [name: name, version: targetVersion, status: 'invalid']
+            summary += ":x: ${targetVersion} is NOT compatible with ${name} on EKS ${clusterVersion}\n"
             failedToValidate << [name: name, version: targetVersion]
-            preSummary += "${msg}\n"
             return
         }
 
+        summary += ":gear: ${name} will be upgraded from ${currentVersion} → ${targetVersion}\n"
         toUpgrade << addon
-        preSummary += ":gear: ${name} will be upgraded from ${currentVersion} → ${targetVersion}\n"
     }
 
-    if (toUpgrade.isEmpty() && failedToValidate.isEmpty()) {
-        preSummary += "\n✅ All add-ons are already up to date"
-        return [summary: preSummary, failedToValidate: failedToValidate]
+    // ❌ Abort pipeline if validation failed
+    if (!failedToValidate.isEmpty()) {
+        def failedNames = failedToValidate.collect { it.name }.join(', ')
+        summary += "\n❌ Validation failed for: ${failedNames}"
+        echo summary
+        error("❌ Validation failed for add-ons: ${failedNames}")
     }
 
+    // ✅ All add-ons validated
+    if (toUpgrade.isEmpty()) {
+        summary += "✅ All add-ons are already up to date\n"
+        return [summary: summary]
+    }
+
+    // 🛑 Ask for approval before upgrading
     input message: "Proceed with upgrading ${toUpgrade.size()} add-ons?", ok: "Yes, upgrade"
 
     toUpgrade.each { addon ->
@@ -69,7 +72,6 @@ def call(List addons, String clusterVersion, String clusterName, String region) 
         try {
             echo "🚀 Upgrading ${name} to ${version}"
             sh """
-                set -euo pipefail
                 /usr/local/bin/docker run --rm -v ~/.aws:/root/.aws public.ecr.aws/eksctl/eksctl update addon \
                     --name '${name}' \
                     --cluster '${clusterName}' \
@@ -77,18 +79,11 @@ def call(List addons, String clusterVersion, String clusterName, String region) 
                     --region '${region}' \
                     --force
             """
-            echo "✅ ${name} upgraded to ${version}"
-            results << [name: name, version: version, status: 'updated']
-            postSummary += ":white_check_mark: ${name} upgraded to ${version}\n"
+            summary += ":white_check_mark: ${name} upgraded to ${version}\n"
         } catch (err) {
-            echo "❌ Failed to upgrade ${name}: ${err.getMessage()}"
-            results << [name: name, version: version, status: 'failed']
-            postSummary += ":x: ${name} failed to upgrade\n"
+            summary += ":x: ${name} failed to upgrade - ${err.getMessage()}\n"
         }
     }
 
-    return [
-        summary: preSummary + "\n---\n" + postSummary,
-        failedToValidate: failedToValidate
-    ]
+    return [summary: summary]
 }
