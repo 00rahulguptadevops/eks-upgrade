@@ -1,4 +1,6 @@
 def call(Map clusterInfo) {
+    echo "ℹ️ Starting EKS nodegroup check/upgrade for cluster: ${clusterInfo.name}"
+
     def nodegroupVersionMap = checkEksNodeGroupVersion(clusterInfo.name, clusterInfo.region)
 
     def skipped = []
@@ -59,4 +61,3 @@ def call(Map clusterInfo) {
         error("❌ Some nodegroups failed to upgrade: ${failures.join(', ')}")
     }
 }
-
