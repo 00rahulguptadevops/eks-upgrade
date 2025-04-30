@@ -5,15 +5,14 @@ def call(String clusterName, String region, String targetVersion) {
     ).trim()
 
     echo "Current version of the cluster: ${currentVersion}"
-    
 
     if (currentVersion == targetVersion) {
-        echo "Cluster is already at the target version: ${targetVersion}. Skipping upgrade."
-        currentBuild.result = 'SUCCESS'
-        return  // exit stage early
-    }  
-    return currentVersion
-}
+        echo "Cluster is already at the target version (${targetVersion}). Skipping upgrade."
+        return  // Exit early; stage won't proceed further
+    }
 
-
+    input message: "Do you want to upgrade the cluster from ${currentVersion} to ${targetVersion}?"
     
+    // Optionally: run upgrade command here
+    // sh "eksctl upgrade cluster --name ${clusterName} --region ${region} --version ${targetVersion}"
+}
