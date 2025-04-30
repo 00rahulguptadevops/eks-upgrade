@@ -95,7 +95,6 @@ def upgradeNodegroup(String cluster, String nodegroup, String region, String ver
                 --cluster ${cluster} \
                 --region ${region} \
                 --kubernetes-version ${version} \
-                --approve
         """
         return "true"
     } catch (Exception e) {
