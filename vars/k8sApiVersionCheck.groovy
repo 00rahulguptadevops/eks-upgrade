@@ -17,7 +17,7 @@ def call(String kubeconfig, String targetVersion) {
     try {
         output = sh(script: command, returnStdout: true).trim()
     } catch (err) {
-        status = err.getCauses()?.first()?.getExitCode() ?: 1
+        status = 1
         output = err.getMessage()
     }
 
