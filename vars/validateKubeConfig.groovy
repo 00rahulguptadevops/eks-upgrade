@@ -14,7 +14,7 @@ def call(String kubeconfig) {
     echo result
 
     def summary = result == "true"
-        ? ":white_check_mark: Kubeconfig file `${kubeconfig}` is valid\\n"
+        ? ":white_check_mark: Kubeconfig file `${kubeconfig}` is valid\n"
         : ":x: Kubeconfig file `${kubeconfig}` is invalid\\n"
 
     return [valid: result == "true", summary: summary]
