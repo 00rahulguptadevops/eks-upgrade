@@ -19,7 +19,7 @@ def call(Map args = [:]) {
     } catch (err) {
         // Even if it "fails", we still get the output
         output = err.getMessage()
-        exitCode = err.getCauses()?.first()?.getExitCode() ?: 1
+        exitCode = 200
     }
 
     // Always write and archive raw output
