@@ -1,4 +1,4 @@
-@Library('Jenkinsshared') _  
+@Library('Jenkinsshared@demo-version-v1') _  
 
 def clusterInfo
 
